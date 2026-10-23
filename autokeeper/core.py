@@ -130,7 +130,7 @@ def is_disposed(vehicle, today=None):
     return bool(disposal and disposal <= (today or date.today()))
 
 
-def save_vehicle(db, body, vehicle_id=None):
+def save_vehicle(db, body, vehicle_id=None, commit=True):
     current = get_vehicle(db, vehicle_id) if vehicle_id is not None else None
     if vehicle_id is not None and current is None:
         raise LookupError("Vehicle not found")
@@ -161,7 +161,8 @@ def save_vehicle(db, body, vehicle_id=None):
               updated_at=:updated
             WHERE id=:id
         """, {**values, "updated": stamp, "id": vehicle_id})
-    db.commit()
+    if commit:
+        db.commit()
     return get_vehicle(db, vehicle_id)
 
 

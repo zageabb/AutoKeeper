@@ -226,8 +226,8 @@ def apply_change(db: sqlite3.Connection, requester: str, token: str) -> dict:
         updates, _ = validate_update(current, json.loads(stored["updates_json"]))
         final = dict(current)
         final.update(updates)
-        # save_vehicle commits the held SQLite write transaction.
-        saved = core.save_vehicle(db, final, current["id"])
+        # Commit vehicle update and proposal consumption atomically.
+        saved = core.save_vehicle(db, final, current["id"], commit=False)
         db.execute(
             "UPDATE ai_change_proposals SET applied_at=? WHERE id=?",
             (int(time.time()), token),
