@@ -111,6 +111,11 @@ def normalise_lifecycle_date(value):
     raw = str(value).strip()
     if not raw:
         return None
+    # openpyxl cells may arrive through CSV-style mapping as ISO timestamps.
+    try:
+        return datetime.fromisoformat(raw).date().isoformat()
+    except ValueError:
+        pass
     for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
         try:
             return datetime.strptime(raw, fmt).date().isoformat()
