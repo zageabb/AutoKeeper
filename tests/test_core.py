@@ -85,6 +85,18 @@ class AutoKeeperTests(unittest.TestCase):
         self.assertEqual(two["already_sent"], 1)
         self.assertEqual(len(sent), 1)
 
+    def test_import_dvla_snapshot_is_not_a_live_check(self):
+        from autokeeper.importer import import_vehicles
+        result = import_vehicles(self.db, [{
+            "registrationNumber": "CC22CCC", "make": "Example",
+            "motStatus": "Valid", "motExpiryDate": "2026-11-25",
+            "taxStatus": "Taxed", "taxDueDate": "2027-01-12"
+        }])
+        self.assertEqual(result["created"], 1)
+        row = self.db.execute("SELECT * FROM vehicles WHERE registration='CC22CCC'").fetchone()
+        self.assertEqual(row["mot_expiry_date"], "2026-11-25")
+        self.assertIsNone(row["last_checked_at"])
+
     def test_import_master_columns_and_duplicates(self):
         row = {"Registration No": "ZZ99 ZZZ", "Email Address": "test@example.org",
                "Employee Name": "A Driver", "Make ": "Test", "Model": "X"}

@@ -3,7 +3,7 @@ import csv
 import io
 import sqlite3
 
-from .core import registration, save_vehicle
+from .core import iso_date, registration, save_vehicle
 
 MAX_IMPORT = 6 * 1024 * 1024
 
@@ -62,11 +62,33 @@ def import_vehicles(db, rows):
                 # Blank import cells must not discard existing driver/contact data.
                 merged = dict(current)
                 merged.update({k: v for k, v in incoming.items() if v})
-                save_vehicle(db, merged, current["id"])
+                saved = save_vehicle(db, merged, current["id"])
                 result["updated"] += 1
             else:
-                save_vehicle(db, incoming)
+                saved = save_vehicle(db, incoming)
                 result["created"] += 1
+            # Optional imported DVLA Results workbook snapshot. Never replace
+            # a record already refreshed live by this application with older
+            # spreadsheet data. Snapshot imports are NOT live DVLA checks.
+            if not saved["last_checked_at"]:
+                mot_raw = value(row, "motExpiryDate", "motExpiry")
+                tax_raw = value(row, "taxDueDate", "taxDue")
+                mot_date = iso_date(mot_raw)
+                tax_date = iso_date(tax_raw)
+                mot_status = value(row, "motStatus")
+                tax_status = value(row, "taxStatus")
+                if any((mot_date, tax_date, mot_status, tax_status)):
+                    db.execute("""
+                        UPDATE vehicles SET
+                          mot_expiry_date=COALESCE(?,mot_expiry_date),
+                          tax_due_date=COALESCE(?,tax_due_date),
+                          mot_status=COALESCE(NULLIF(?,''),mot_status),
+                          tax_status=COALESCE(NULLIF(?,''),tax_status)
+                        WHERE id=?
+                    """, (mot_date.isoformat() if mot_date else None,
+                          tax_date.isoformat() if tax_date else None,
+                          mot_status, tax_status, saved["id"]))
+                    db.commit()
         except (ValueError, sqlite3.IntegrityError) as exc:
             result["skipped"] += 1
             if len(result["errors"]) < 20:

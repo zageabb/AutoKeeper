@@ -33,7 +33,7 @@ uvicorn autokeeper.server:app --host 127.0.0.1 --port 5064
 
 Open http://127.0.0.1:5064/ using the HTTP Basic username/password from the environment. For localhost use AUTOKEEPER_ROOT_PATH empty; for the UDA/Caddy prefix set AUTOKEEPER_ROOT_PATH=/apps/autokeeper and follow docs/UBUNTU_DEPLOYMENT.md.
 
-Upload Master Car List-ga.xlsx using **Import vehicles**. Existing VRMs are updated, not duplicated. Real employee details remain in the private SQLite store, not in version control. The app imports the master vehicle and recipient columns; it then retrieves authoritative statuses from DVLA if credentials are configured. A second DVLA results import is not required.
+Upload Master Car List-ga.xlsx using **Import vehicles**. Existing VRMs are updated, not duplicated. Real employee details remain in the private SQLite store, not in version control. The app imports the master vehicle and recipient columns; it then retrieves authoritative statuses from DVLA if credentials are configured. The optional dvla check.xlsx Results sheet can also be imported to show historical MOT/tax dates as an unverified snapshot; a later live DVLA check supersedes it.
 
 Use **Check DVLA** to refresh all vehicles or use the circular refresh button against one car. The API key must be placed in DVLA_API_KEY, not in source files. Some DVLA records do not provide MOT expiry data; those dates are shown as unknown.
 
