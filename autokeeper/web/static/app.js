@@ -1,6 +1,7 @@
 /* AutoKeeper browser UI. API and URL prefix are configured by the host. */
 "use strict";
 (function () {
+  // LOCAL_UBUNTU_PROXY_COMPAT: requests follow browser page path, not server root_path.
   const base = window.AUTO_BASE || "";
   const rowsElement = document.getElementById("vehicle-rows");
   const dialog = document.getElementById("vehicle-dialog");
