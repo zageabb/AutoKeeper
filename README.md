@@ -72,3 +72,8 @@ UDA service port: 5092 on 127.0.0.1. Direct LAN access to port 5092 is intention
 ### Troubleshooting Excel import
 
 For an import error, update the server venv dependencies: `cd /opt/autokeeper && .venv/bin/python -m pip install -r requirements.txt` then `sudo systemctl restart autokeeper.service`. The real path is the service `WorkingDirectory`/`ExecStart` in `sudo systemctl cat autokeeper.service`. An Excel file with a `Master` worksheet, normal registration/email columns and optional historical DVLA dates should upload successfully. If an error persists, inspect `sudo journalctl -u autokeeper.service -n 100 --no-pager`, redacting emails and tokens before sharing logs. A repeat import updates matching registrations, not duplicates.
+
+
+## Company grouping
+
+The dashboard starts on **All companies** and groups the vehicle table under collapsible Company headings, each with the number of vehicles, MOT and tax renewals due/overdue, and those needing attention. Select a company above the summary cards to view company-only dashboard statistics and vehicle records. The search and compliance filters continue working inside that company; return to All companies to see the full fleet. Company matching is case-insensitive and ignores leading/trailing spaces. Blank company values are shown under **Unassigned**, and the Add Vehicle dialog offers existing company names for consistency. DVLA refresh-all and the weekly reminder worker still act on every registered vehicle, regardless of the screen filter. This is grouping/filtering, **not company-based access control**.

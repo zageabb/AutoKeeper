@@ -140,6 +140,7 @@ def status(expiry, today=None):
 
 def view_vehicle(row, today=None):
     item = dict(row)
+    item["company_key"] = company_key(item.get("company"))
     item["mot"] = status(item["mot_expiry_date"], today)
     item["tax"] = status(item["tax_due_date"], today)
     if item["tax_status"].upper() == "SORN":
@@ -147,28 +148,73 @@ def view_vehicle(row, today=None):
     return item
 
 
+def company_key(value):
+    """Company grouping ignores surrounding whitespace and letter case."""
+    return str(value or "").strip().casefold()
+
+
+def fleet_stats(rows):
+    """One source of truth for both fleet-wide and company KPIs."""
+    return {
+        "clear": sum(
+            v["mot"]["state"] == "ok" and v["tax"]["state"] in ("ok", "sorn")
+            for v in rows
+        ),
+        "unknown": sum(
+            v["mot"]["state"] == "unknown" or v["tax"]["state"] == "unknown"
+            for v in rows
+        ),
+        "total": len(rows),
+        "mot_due": sum(v["mot"]["state"] == "due" for v in rows),
+        "tax_due": sum(v["tax"]["state"] == "due" for v in rows),
+        "mot_overdue": sum(v["mot"]["state"] == "overdue" for v in rows),
+        "tax_overdue": sum(v["tax"]["state"] == "overdue" for v in rows),
+        "attention": sum(
+            v["mot"]["state"] in ("due", "overdue")
+            or v["tax"]["state"] in ("due", "overdue")
+            for v in rows
+        ),
+        "unchecked": sum(not v["last_checked_at"] for v in rows),
+        "errors": sum(bool(v["last_error"]) for v in rows),
+        "missing_email": sum(not v["email"] for v in rows),
+    }
+
+
+def company_groups(rows):
+    """Return sorted company groups with per-company stats.
+
+    Missing names belong to an explicit Unassigned group (key "").
+    Group keys are case-insensitive, but displayed names retain original casing.
+    """
+    grouped = {}
+    for vehicle in rows:
+        raw_name = str(vehicle["company"] or "").strip()
+        key = company_key(raw_name)
+        if key not in grouped:
+            grouped[key] = {
+                "key": key,
+                "name": raw_name or "Unassigned",
+                "vehicles": [],
+            }
+        grouped[key]["vehicles"].append(vehicle)
+    return [
+        {
+            "key": grouped[key]["key"],
+            "name": grouped[key]["name"],
+            "stats": fleet_stats(grouped[key]["vehicles"]),
+        }
+        for key in sorted(grouped, key=lambda k: (not bool(k), k))
+    ]
+
+
 def get_dashboard(db, today=None):
     rows = [view_vehicle(r, today) for r in db.execute(
         "SELECT * FROM vehicles ORDER BY registration").fetchall()]
-    clear = sum(v["mot"]["state"] == "ok" and v["tax"]["state"] in ("ok", "sorn") for v in rows)
-    unknown = sum(v["mot"]["state"] == "unknown" or v["tax"]["state"] == "unknown" for v in rows)
     return {
         "vehicles": rows,
         "as_of": (today or date.today()).isoformat(),
-        "stats": {
-            "clear": clear,
-            "unknown": unknown,
-            "total": len(rows),
-            "mot_due": sum(v["mot"]["state"] == "due" for v in rows),
-            "tax_due": sum(v["tax"]["state"] == "due" for v in rows),
-            "mot_overdue": sum(v["mot"]["state"] == "overdue" for v in rows),
-            "tax_overdue": sum(v["tax"]["state"] == "overdue" for v in rows),
-            "attention": sum(v["mot"]["state"] in ("due", "overdue") or
-                             v["tax"]["state"] in ("due", "overdue") for v in rows),
-            "unchecked": sum(not v["last_checked_at"] for v in rows),
-            "errors": sum(bool(v["last_error"]) for v in rows),
-            "missing_email": sum(not v["email"] for v in rows),
-        },
+        "stats": fleet_stats(rows),
+        "companies": company_groups(rows),
         "dvla_configured": bool(os.environ.get("DVLA_API_KEY")),
         "smtp_configured": smtp_ready(),
     }

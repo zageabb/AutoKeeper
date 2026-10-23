@@ -143,3 +143,47 @@ dialog::backdrop { background: rgba(15,25,40,.55); }
 @media (max-width: 900px) { .insights { grid-template-columns: 1fr; } .page { padding: 28px 20px; } .topbar { padding: 0 20px; } .intro { align-items: flex-start; } }
 @media (max-width: 700px) { .shell { display: block; } .sidebar { width: 100%; min-height: auto; padding: 12px 18px; } .brand { padding: 4px 0 0; } .nav-caption, .nav-item, .sidebar-foot { display: none; } .topbar { min-height: 48px; } .topright { font-size: 0; } .topright .avatar { font-size: 12px; } .intro { flex-direction: column; } .metrics { gap: 10px; } .metric { padding: 17px; min-height: 135px; } .metric-heading { font-size: 11px; } .metric strong { font-size: 28px; } .health-center { flex-direction: column; align-items: flex-start; } .import-panel { flex-direction: column; align-items: flex-start; } }
 @media (max-width: 460px) { .page { padding: 22px 12px; } .metrics { grid-template-columns: 1fr 1fr; } .metric { padding: 12px; } .metric-icon { display: none; } .health-panel,.status-panel,.table-top { padding: 18px; } .form-grid { grid-template-columns: 1fr; } .table-controls { width: 100%; } .search-wrap { width: 100%; } .search-wrap input { width: 100%; } }
+
+
+/* Company-grouped fleet view — 2026-10-23 */
+.company-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 20px; flex-wrap: wrap; padding: 16px 20px;
+  background: #fff; border: 1px solid var(--border); border-radius: 11px;
+  margin: 0 0 18px;
+}
+.company-picker { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.company-picker label {
+  color: #758497; font-size: 10px; letter-spacing: 1px; font-weight: 800;
+}
+.company-picker select {
+  min-width: 210px; max-width: min(410px, 85vw); font-weight: 690;
+  background: #f9fbfc; border: 1px solid #cdd7e0; min-height: 41px;
+}
+#company-scope { color: #64768a; font-size: 12px; font-weight: 550; }
+tr.company-group-row > td {
+  padding: 0 20px; border-bottom: 1px solid #dce5ed;
+  background: #eef3f8;
+}
+tr.company-group-row:hover > td { background: #e9f1f8; }
+.company-toggle {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  flex-wrap: wrap; width: 100%; padding: 13px 4px; border: 0;
+  background: transparent; text-align: left; color: #2b4055;
+}
+.company-group-title { font-size: 13px; font-weight: 770; display: flex; align-items: center; gap: 9px; }
+.company-chevron { color: #647a91; font-size: 18px; line-height: 1; width: 18px; text-align: center; }
+.company-group-metrics {
+  display: flex; align-items: center; gap: 17px; flex-wrap: wrap;
+  font-size: 11px; font-weight: 580; color: #56697d;
+}
+.company-attention { color: #99534a; font-weight: 740; }
+@media (max-width: 900px) {
+  .company-group-metrics { gap: 9px 16px; }
+}
+@media (max-width: 700px) {
+  .company-bar { padding: 14px; }
+  .company-picker, .company-picker select { width: 100%; max-width: 100%; }
+  .company-group-metrics { width: 100%; padding-left: 26px; }
+  .company-toggle { gap: 8px; }
+}
