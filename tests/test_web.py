@@ -40,6 +40,28 @@ class WebTests(unittest.TestCase):
         self.assertEqual(dashboard["stats"]["total"], 1)
         self.assertEqual(dashboard["stats"]["unchecked"], 1)
 
+    def test_dashboard_includes_company_summaries(self):
+        headers = {"X-AutoKeeper-Request": "same-origin"}
+        for reg, company in [
+            ("AA00AAA", "Company A"),
+            ("BB11BBB", "company a"),
+            ("CC22CCC", "Company B"),
+            ("DD33DDD", ""),
+        ]:
+            r = self.client.post(
+                "/api/vehicles", auth=self.auth, headers=headers,
+                json={"registration": reg, "company": company}
+            )
+            self.assertEqual(r.status_code, 200, r.text)
+        data = self.client.get("/api/dashboard", auth=self.auth).json()
+        self.assertEqual(data["stats"]["total"], 4)
+        self.assertEqual([x["key"] for x in data["companies"]],
+                         ["company a", "company b", ""])
+        self.assertEqual([x["stats"]["total"] for x in data["companies"]],
+                         [2, 1, 1])
+        self.assertEqual(data["companies"][-1]["name"], "Unassigned")
+        self.assertEqual(sum(x["stats"]["unknown"] for x in data["companies"]), 4)
+
     def test_static_assets_and_prefix_links(self):
         from unittest.mock import patch
         with patch.dict(os.environ, {"AUTOKEEPER_ROOT_PATH": "/apps/autokeeper"}):

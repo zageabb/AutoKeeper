@@ -38,6 +38,37 @@ class AutoKeeperTests(unittest.TestCase):
         self.assertEqual(metrics["unknown"], 1)
         self.assertEqual(metrics["clear"], 0)
 
+    def test_company_groups_and_fleet_totals(self):
+        from autokeeper.core import company_groups, view_vehicle
+        self.add("AB12ABC")
+        self.add("XY34XYZ")
+        self.add("CD56CDE")
+        self.add("EF78EFG")
+        self.db.execute("UPDATE vehicles SET company='  ALPHA ', "
+                        "mot_expiry_date='2026-11-05', tax_due_date='2027-05-01' "
+                        "WHERE registration='AB12ABC'")
+        self.db.execute("UPDATE vehicles SET company='alpha', "
+                        "mot_expiry_date='2026-11-09', tax_due_date='2026-10-20' "
+                        "WHERE registration='XY34XYZ'")
+        self.db.execute("UPDATE vehicles SET company='Beta', "
+                        "mot_expiry_date='2027-05-01', tax_due_date='2027-05-01' "
+                        "WHERE registration='CD56CDE'")
+        self.db.execute("UPDATE vehicles SET company='   ', "
+                        "mot_expiry_date=NULL, tax_due_date=NULL "
+                        "WHERE registration='EF78EFG'")
+        self.db.commit()
+        day = date(2026, 10, 23)
+        rows = [view_vehicle(r, day) for r in self.db.execute("SELECT * FROM vehicles")]
+        companies = company_groups(rows)
+        self.assertEqual([group["key"] for group in companies],
+                         ["alpha", "beta", ""])
+        self.assertEqual(companies[0]["stats"]["total"], 2)
+        self.assertEqual(companies[0]["stats"]["mot_due"], 2)
+        self.assertEqual(companies[0]["stats"]["tax_overdue"], 1)
+        self.assertEqual(companies[-1]["name"], "Unassigned")
+        self.assertEqual(companies[-1]["stats"]["unknown"], 1)
+        self.assertEqual(sum(c["stats"]["total"] for c in companies), len(rows))
+
     def test_due_dates(self):
         today = date(2026, 10, 23)
         self.assertEqual(core.status("2026-11-02", today)["state"], "due")
