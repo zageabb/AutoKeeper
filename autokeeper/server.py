@@ -35,7 +35,7 @@ class VehicleInput(BaseModel):
 
 def require_admin(credentials: HTTPBasicCredentials | None = Depends(basic)):
     password = os.getenv("APP_ADMIN_PASSWORD", "")
-    if not password:
+    if not password or password == "REPLACE_WITH_LONG_RANDOM_PASSWORD":
         if os.getenv("AUTOKEEPER_DEV_NO_AUTH") == "1":
             return
         raise HTTPException(503, "Administrator password is not configured")
@@ -70,7 +70,8 @@ def create_app(db_path=None):
             db.close()
         yield
 
-    app = FastAPI(title="AutoKeeper", root_path=root_path, lifespan=lifespan)
+    app = FastAPI(title="AutoKeeper", root_path=root_path, lifespan=lifespan,
+                  docs_url=None, redoc_url=None, openapi_url=None)
     app.mount("/static", StaticFiles(directory=str(HERE / "web" / "static")),
               name="static")
 
