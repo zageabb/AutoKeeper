@@ -114,6 +114,54 @@ class WebTests(unittest.TestCase):
         self.assertIsNone(clear.json()["disposal_date"])
         self.assertEqual(clear.json()["acquisition_date"], "2022-05-09")
 
+    def test_manual_disposed_dvla_check_api(self):
+        from autokeeper import core
+        from unittest.mock import patch
+        import os
+        headers = {"X-AutoKeeper-Request": "same-origin"}
+        for reg, disposal in [
+            ("AA11AAA", "2025-10-20"),
+            ("BB22BBB", None),
+        ]:
+            response = self.client.post("/api/vehicles", auth=self.auth,
+                                        headers=headers, json={
+                                            "registration": reg,
+                                            "company": "Testing",
+                                            "disposal_date": disposal,
+                                        })
+            self.assertEqual(response.status_code, 200, response.text)
+        with patch.dict(os.environ, {"DVLA_API_KEY": "synthetic-key"}):
+            with patch("autokeeper.core.dvla_query", return_value={
+                    "make": "Example", "taxStatus": "Taxed",
+                    "motStatus": "Valid", "motExpiryDate": "2027-08-01",
+                    "taxDueDate": "2027-09-01",
+            }) as lookup:
+                disposed = self.client.post("/api/refresh-all?scope=disposed",
+                                            auth=self.auth, headers=headers)
+                self.assertEqual(disposed.status_code, 200, disposed.text)
+                self.assertEqual(disposed.json()["total"], 1)
+                self.assertEqual(disposed.json()["skipped_active"], 1)
+                lookup.assert_called_once()
+                self.assertEqual(lookup.call_args.args[0], "AA11AAA")
+                dashboard = self.client.get("/api/dashboard", auth=self.auth).json()
+                old = next(v for v in dashboard["vehicles"]
+                           if v["registration"] == "AA11AAA")
+                self.assertEqual(old["lifecycle_state"], "disposed")
+                self.assertEqual(old["mot_status"], "Valid")
+                self.assertEqual(old["tax_status"], "Taxed")
+                self.assertEqual(old["mot"]["state"], "ok")
+                self.assertEqual(dashboard["stats"]["attention"], 0)
+                self.assertEqual(dashboard["companies"][0]["stats"]["attention"], 0)
+                active = self.client.post("/api/refresh-all?scope=active",
+                                          auth=self.auth, headers=headers)
+                self.assertEqual(active.status_code, 200)
+                self.assertEqual(active.json()["skipped_disposed"], 1)
+                self.assertEqual(lookup.call_args.args[0], "BB22BBB")
+                self.assertEqual(lookup.call_count, 2)
+            invalid = self.client.post("/api/refresh-all?scope=nonsense",
+                                       auth=self.auth, headers=headers)
+            self.assertEqual(invalid.status_code, 422)
+
     def test_static_assets_and_prefix_links(self):
         from unittest.mock import patch
         with patch.dict(os.environ, {"AUTOKEEPER_ROOT_PATH": "/apps/autokeeper"}):
@@ -135,6 +183,9 @@ class WebTests(unittest.TestCase):
                 self.assertIn('id="field-disposal_date"', home.text)
                 self.assertIn('value="disposed"', home.text)
                 self.assertIn("acquisition_date", js.text)
+                self.assertIn('id="refresh-disposed"', home.text)
+                self.assertIn('scope=" + scope', js.text)
+                self.assertIn("dvla-raw-status", js.text)
 
 
     def test_import_generated_workbook_layout(self):
