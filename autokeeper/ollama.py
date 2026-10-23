@@ -68,7 +68,7 @@ def list_models(session=None) -> list[dict]:
     return sorted(cleaned, key=lambda m: m["name"].casefold())
 
 
-def open_chat(model: str, messages: list[dict], session=None):
+def open_chat(model: str, messages: list[dict], system_context: str = "", session=None):
     """Start upstream NDJSON streaming; called from a synchronous FastAPI route.
 
     Model selection is checked against Ollama's *current* installed model list.
@@ -86,6 +86,8 @@ def open_chat(model: str, messages: list[dict], session=None):
             "other tools or live information. Do not claim to have performed actions."
         ),
     }]
+    if system_context:
+        outgoing.append({"role": "system", "content": system_context})
     outgoing.extend({"role": msg["role"], "content": msg["content"]} for msg in messages)
     try:
         response = client.post(
@@ -144,3 +146,39 @@ def stream_deltas(response):
         yield '{"error":"Ollama streaming connection was interrupted."}\n'
     finally:
         response.close()
+
+
+def structured_completion(model: str, system: str, user: str, schema: dict,
+                          session=None) -> dict:
+    """Request a single schema-constrained JSON response for edit proposals."""
+    if model not in {m["name"] for m in list_models(session)}:
+        raise ValueError("Select a model installed on Ollama.")
+    client = session or requests
+    try:
+        result = client.post(
+            base_url() + "/api/chat",
+            json={
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                "stream": False,
+                "format": schema,
+                "options": {"temperature": 0, "num_predict": 1024},
+            },
+            timeout=(5, request_timeout()),
+            allow_redirects=False,
+        )
+        result.raise_for_status()
+        payload = result.json()
+        content = payload["message"]["content"]
+        decoded = json.loads(content)
+        if not isinstance(decoded, dict):
+            raise ValueError("Non-object response")
+        return decoded
+    except (requests.RequestException, ValueError, KeyError, TypeError) as exc:
+        raise OllamaError(
+            "The model could not prepare a structured change. "
+            "Try another Ollama model with JSON-schema support."
+        ) from exc
