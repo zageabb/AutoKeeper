@@ -78,6 +78,9 @@ def create_app(db_path=None):
     # LOCAL_UBUNTU_PROXY_COMPAT:
     # Caddy strips /apps/autokeeper/ and the externally visible prefix is
     # supplied as an explicit deployment setting, never trusted from callers.
+    # LOCAL_UBUNTU_PROXY_COMPAT: Caddy handle_path strips the public prefix.
+    # Do not pass root_path to FastAPI; recent Starlette versions then route
+    # /static/* incorrectly when the request path is already stripped.
     root_path = os.getenv("AUTOKEEPER_ROOT_PATH", "").rstrip("/")
 
     @asynccontextmanager
@@ -89,7 +92,7 @@ def create_app(db_path=None):
             db.close()
         yield
 
-    app = FastAPI(title="AutoKeeper", root_path=root_path, lifespan=lifespan,
+    app = FastAPI(title="AutoKeeper", lifespan=lifespan,
                   docs_url=None, redoc_url=None, openapi_url=None)
     app.mount("/static", StaticFiles(directory=str(HERE / "web" / "static")),
               name="static")

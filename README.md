@@ -64,3 +64,6 @@ Tests: python -m compileall -q autokeeper tests && python -m pytest tests -q.
 - DVLA VES API: https://developer-portal.driver-vehicle-licensing.api.gov.uk/apis/vehicle-enquiry-service/vehicle-enquiry-service-description.html
 
 DVLA Vehicle Enquiry is separate from the optional DVSA MOT History API. For critical compliance decisions, confirm against official GOV.UK services.
+
+
+UDA service port: 5092 on 127.0.0.1. Direct LAN access to port 5092 is intentionally disabled in UDA authentication mode. Use the authenticated /apps/autokeeper/ URL. See docs/UBUNTU_DEPLOYMENT.md.
