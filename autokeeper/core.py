@@ -23,7 +23,10 @@ def utcnow():
 def open_db(path=None):
     path = path or os.environ.get("AUTOKEEPER_DB_PATH", "data/autokeeper.db")
     Path(path).parent.mkdir(parents=True, exist_ok=True)
-    db = sqlite3.connect(path, timeout=30)
+    # FastAPI may construct the request-scoped DB dependency in a worker
+    # thread, then execute an async upload handler on the event-loop thread.
+    # Each request gets its own connection; permit that controlled handoff.
+    db = sqlite3.connect(path, timeout=30, check_same_thread=False)
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA foreign_keys=ON")
     db.execute("PRAGMA journal_mode=WAL")
