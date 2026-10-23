@@ -58,12 +58,14 @@
     if (data.state === "due") return data.days === 0 ? "Due today" : "Due soon";
     return "Up to date";
   }
-  function dueCell(data, dateText) {
+  function dueCell(data, dateText, reportedStatus) {
     const value = data || {state:"unknown"};
     const state = ["ok","due","overdue","sorn","disposed"].includes(value.state) ? value.state : "unknown";
     return '<span class="date-cell"><span class="pill pill-' + state + '">' +
       escapeHTML(statusText(value)) + '</span><span class="date-text">' +
-      escapeHTML(formatDate(dateText)) + '</span></span>';
+      escapeHTML(formatDate(dateText)) + '</span>' +
+      (reportedStatus ? '<span class="dvla-raw-status">DVLA: ' +
+        escapeHTML(reportedStatus) + '</span>' : '') + '</span>';
   }
   function companyScopedVehicles() {
     return selectedCompany === "all" ? records :
@@ -133,8 +135,8 @@
       '<td><span class="date-text">' + escapeHTML(formatDate(v.disposal_date)) + '</span>' +
         (v.lifecycle_state === "disposed" ? '<span class="pill pill-disposed">Disposed</span>' :
          v.lifecycle_state === "scheduled" ? '<span class="pill pill-due">Scheduled</span>' : '') + '</td>' +
-      '<td>' + dueCell(v.mot, v.mot_expiry_date) + '</td>' +
-      '<td>' + dueCell(v.tax, v.tax_due_date) + '</td>' +
+      '<td>' + dueCell(v.mot, v.mot_expiry_date, v.lifecycle_state === "disposed" ? v.mot_status : "") + '</td>' +
+      '<td>' + dueCell(v.tax, v.tax_due_date, v.lifecycle_state === "disposed" ? v.tax_status : "") + '</td>' +
       '<td><span class="email-cell">' + escapeHTML(v.email || "Not set") + '</span></td>' +
       '<td><div class="secondary-cell">' + escapeHTML(
         v.last_checked_at ? v.last_checked_at.slice(0,10) : "Never") +
@@ -148,9 +150,10 @@
   }
   function companyHeader(group, entries) {
     const collapsed = collapsedCompanies.has(group.key);
-    const dueMOT = entries.filter(function (v) { return isDue(v.mot.state); }).length;
-    const dueTax = entries.filter(function (v) { return isDue(v.tax.state); }).length;
-    const attention = entries.filter(function (v) {
+    const managed = entries.filter(function (v) { return v.lifecycle_state !== "disposed"; });
+    const dueMOT = managed.filter(function (v) { return isDue(v.mot.state); }).length;
+    const dueTax = managed.filter(function (v) { return isDue(v.tax.state); }).length;
+    const attention = managed.filter(function (v) {
       return isDue(v.mot.state) || isDue(v.tax.state);
     }).length;
     const disposed = entries.filter(function (v) { return v.lifecycle_state === "disposed"; }).length;
@@ -174,7 +177,8 @@
         .some(function (s) { return String(s || "").toLowerCase().includes(q); })) return false;
       if (filter === "active" && v.lifecycle_state === "disposed") return false;
       if (filter === "disposed" && v.lifecycle_state !== "disposed") return false;
-      if (filter === "attention" && !isDue(v.mot.state) && !isDue(v.tax.state)) return false;
+      if (filter === "attention" && (v.lifecycle_state === "disposed" ||
+          (!isDue(v.mot.state) && !isDue(v.tax.state)))) return false;
       if (filter === "unchecked" && v.last_checked_at) return false;
       if (filter === "missing-email" && v.email) return false;
       return true;
@@ -271,19 +275,26 @@
       }
     });
   });
+  async function manualRefresh(scope, button) {
+    button.disabled = true;
+    message(scope === "disposed" ? "Checking disposed vehicles with DVLA." :
+      "Checking active vehicles with DVLA.");
+    try {
+      const result = await api("/api/refresh-all?scope=" + scope, {method:"POST"});
+      message("DVLA checked " + result.total + " " + scope + " vehicles: " +
+        result.success + " successful, " + result.failed + " failed." +
+        (scope === "active" ? " " + result.skipped_disposed + " disposed vehicles skipped." : ""),
+        result.failed > 0);
+      await load();
+    } finally { button.disabled = false; }
+  }
   byId("refresh-all").addEventListener("click", function () {
     const button = this;
-    guarded(async function () {
-      button.disabled = true;
-      message("Running DVLA checks. This can take a while for larger fleets.");
-      try {
-        const result = await api("/api/refresh-all", {method:"POST"});
-        message("DVLA checked " + result.total + " active vehicles: " + result.success +
-          " successful, " + result.failed + " failed; " +
-          (result.skipped_disposed || 0) + " disposed vehicles skipped.", result.failed > 0);
-        await load();
-      } finally { button.disabled = false; }
-    });
+    guarded(function () { return manualRefresh("active", button); });
+  });
+  byId("refresh-disposed").addEventListener("click", function () {
+    const button = this;
+    guarded(function () { return manualRefresh("disposed", button); });
   });
   byId("preview-reminders").addEventListener("click", function () {
     guarded(async function () {

@@ -191,3 +191,7 @@ tr.company-group-row:hover > td { background: #e9f1f8; }
 /* Vehicle lifecycle history */
 .pill-disposed { display: inline-block; margin-top: 6px; background: #edf0f4; color: #5b6777; }
 .date-text { white-space: nowrap; }
+
+.dvla-raw-status { display: block; margin-top: 5px; font-size: 10px; color: #71849a; white-space: nowrap; }
+.page-actions { align-items: center; }
+@media (max-width: 700px) { .page-actions { width: 100%; } .page-actions .btn { flex: 1 1 auto; } }
