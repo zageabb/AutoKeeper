@@ -140,7 +140,52 @@
       <div class="dialog-footer"><button type="button" class="btn btn-secondary" id="cancel-dialog">Cancel</button><button type="submit" class="btn btn-primary">Save vehicle</button></div>
     </form>
   </dialog>
+  <!-- On-page Ollama chat: state stays in this browser tab only. -->
+  <button type="button" id="ollama-toggle" class="ollama-launcher"
+          aria-controls="ollama-panel" aria-expanded="false">
+    <span aria-hidden="true">✦</span> AI Chat
+  </button>
+  <section id="ollama-panel" class="ollama-panel" role="dialog"
+           aria-label="AutoKeeper Ollama chat" aria-modal="false" hidden>
+    <header class="ollama-header">
+      <div>
+        <strong>Ollama chat</strong>
+        <small>Local AI · text only</small>
+      </div>
+      <div class="ollama-header-actions">
+        <button type="button" id="ollama-new" title="Clear chat history">New chat</button>
+        <button type="button" id="ollama-close" aria-label="Hide chat" title="Hide chat">×</button>
+      </div>
+    </header>
+    <div class="ollama-toolbar">
+      <label for="ollama-model">Model</label>
+      <select id="ollama-model" aria-label="Ollama installed models" disabled>
+        <option value="">Connect to Ollama…</option>
+      </select>
+      <button type="button" id="ollama-refresh-models" title="Refresh model list"
+              aria-label="Refresh installed models">↻</button>
+    </div>
+    <p id="ollama-status" class="ollama-status" role="status" aria-live="polite">
+      Open chat to connect to Ollama.
+    </p>
+    <div id="ollama-messages" class="ollama-messages" aria-label="Chat messages" aria-live="off">
+      <p class="ollama-placeholder">Select an installed Ollama model and start chatting. Your messages are not automatically linked to vehicle records.</p>
+    </div>
+    <form id="ollama-chat-form" class="ollama-compose">
+      <label class="ollama-sr-only" for="ollama-input">Message to Ollama</label>
+      <textarea id="ollama-input" rows="2" maxlength="6000"
+                placeholder="Ask your local model…" disabled></textarea>
+      <div class="ollama-compose-footer">
+        <small>Enter to send · Shift+Enter for a new line</small>
+        <div>
+          <button type="button" id="ollama-stop" hidden>Stop</button>
+          <button type="submit" id="ollama-send" disabled>Send</button>
+        </div>
+      </div>
+    </form>
+  </section>
   <script>window.AUTO_BASE = window.location.pathname.replace(/\/$/, "");</script>
   <script src="./static/app.js" defer></script>
+  <script src="./static/ollama-chat.js" defer></script>
 </body>
 </html>
