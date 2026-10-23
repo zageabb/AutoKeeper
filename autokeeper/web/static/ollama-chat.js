@@ -122,7 +122,11 @@
     const prompt = input.value.trim();
     if (!prompt || busy || !model.value) return;
     lastInstruction = prompt;
-    const conversation = [...history, {role:"user", content:prompt}].slice(-20);
+    // Include the follow-up without exceeding the server-side context limit.
+    const conversation = [...history, {role:"user", content:prompt}].slice(-19);
+    while (conversation.reduce((total, m) => total + m.content.length, 0) > 29000) {
+      conversation.shift();
+    }
     addMessage("user", prompt);
     input.value = "";
     const output = addMessage("assistant", "");
@@ -151,21 +155,38 @@
         }
         if (event.done) done = true;
       }
-      while (true) {
-        const block = await reader.read();
-        if (block.done) break;
-        buffer += decoder.decode(block.value, {stream:true});
-        let pos;
-        while ((pos = buffer.indexOf("\n")) !== -1) {
-          onLine(buffer.slice(0, pos));
-          buffer = buffer.slice(pos + 1);
+      // Ollama sends an explicit done event. Do not wait for proxy EOF:
+      // a reverse proxy may hold the HTTP connection open indefinitely,
+      // leaving busy=true and blocking all subsequent messages.
+      try {
+        while (!done) {
+          const block = await reader.read();
+          if (block.done) break;
+          buffer += decoder.decode(block.value, {stream:true});
+          let pos;
+          while ((pos = buffer.indexOf("\n")) !== -1) {
+            onLine(buffer.slice(0, pos));
+            buffer = buffer.slice(pos + 1);
+            if (done) break;
+          }
         }
+        if (!done) {
+          buffer += decoder.decode();
+          if (buffer.trim()) onLine(buffer);
+        }
+        if (!done) throw new Error("Ollama response was incomplete.");
+      } finally {
+        // Cancel remaining response consumption without blocking the UI
+        // on a network stream that never sends EOF.
+        reader.cancel().catch(() => {});
       }
-      buffer += decoder.decode();
-      if (buffer.trim()) onLine(buffer);
-      if (!done) throw new Error("Ollama response was incomplete.");
+      // Keep subsequent turns within the API's 20-message/30k-character
+      // bounds. The oldest message is discarded only when necessary.
       history = [...conversation,
-        {role:"assistant", content:answer.slice(0, 6000)}].slice(-20);
+        {role:"assistant", content:answer.slice(0, 6000)}].slice(-18);
+      while (history.reduce((total, m) => total + m.content.length, 0) > 24000) {
+        history.shift();
+      }
       await renderMarkdown(output, answer);
       announce("Complete · " + model.value);
     } catch (error) {
@@ -174,6 +195,8 @@
       announce(errorText, error.name !== "AbortError");
     } finally {
       busy = false; controller = null; buttons();
+      // The composer must always be reusable after completion, failure or Stop.
+      if (!panel.hidden) input.focus();
     }
   }
   form.addEventListener("submit", event => {
