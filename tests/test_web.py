@@ -56,5 +56,65 @@ class WebTests(unittest.TestCase):
                 self.assertIn("text/css", css.headers.get("content-type", ""))
                 self.assertIn("javascript", js.headers.get("content-type", ""))
 
+
+    def test_import_generated_workbook_layout(self):
+        """Exercise actual multipart Excel parsing + SQLite with synthetic 45 rows."""
+        from io import BytesIO
+        from openpyxl import Workbook
+        wb = Workbook()
+        sheet = wb.active
+        sheet.title = "Master"
+        sheet.append([
+            "Registration No", "Employee Name", "Company", "Email Address",
+            "Make", "Model", "Colour", "motStatus", "motExpiryDate",
+            "taxStatus", "taxDueDate", "Import Note"
+        ])
+        for i in range(45):
+            sheet.append([
+                f"ZZ{i:05d}", f"Synthetic owner {i}", "Demo",
+                "demo@example.org" if i < 9 else None,
+                "Sample", "Model", "Blue", "Valid", "2027-05-17",
+                "Taxed", "2027-07-01", "Historical snapshot"
+            ])
+        info = wb.create_sheet("How to import")
+        info["A1"] = "Instructions"
+        data = BytesIO()
+        wb.save(data)
+        wb.close()
+        headers = {"X-AutoKeeper-Request": "same-origin"}
+        files = {"file": ("AutoKeeper_Existing_Vehicles_Import.xlsx",
+                          data.getvalue(),
+                          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
+        result = self.client.post("/api/import", auth=self.auth,
+                                  headers=headers, files=files)
+        self.assertEqual(result.status_code, 200, result.text)
+        self.assertEqual(result.json()["created"], 45)
+        self.assertEqual(result.json()["skipped"], 0)
+        self.assertEqual(
+            self.client.get("/api/dashboard", auth=self.auth).json()["stats"]["total"], 45)
+        # Reimport should not create duplicates.
+        again = self.client.post("/api/import", auth=self.auth,
+                                 headers=headers, files=files)
+        self.assertEqual(again.status_code, 200, again.text)
+        self.assertEqual(again.json()["updated"], 45)
+
+    def test_invalid_excel_upload_returns_validation_error(self):
+        files = {"file": ("broken.xlsx", b"not a ZIP file",
+                          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
+        r = self.client.post("/api/import", auth=self.auth,
+                             headers={"X-AutoKeeper-Request": "same-origin"}, files=files)
+        self.assertEqual(r.status_code, 422)
+        self.assertIn("Invalid spreadsheet", r.text)
+
+    def test_missing_excel_dependency_reports_actionable_error(self):
+        from unittest.mock import patch
+        with patch("autokeeper.server.read_import",
+                   side_effect=RuntimeError("Excel import support is not installed.")):
+            r = self.client.post("/api/import", auth=self.auth,
+                                 headers={"X-AutoKeeper-Request": "same-origin"},
+                                 files={"file": ("vehicles.xlsx", b"excel", "application/octet-stream")})
+        self.assertEqual(r.status_code, 503)
+        self.assertIn("not installed", r.text)
+
 if __name__ == "__main__":
     unittest.main()

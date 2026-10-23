@@ -23,7 +23,12 @@ def read_import(data, filename):
     if filename.lower().endswith(".csv"):
         return list(csv.DictReader(io.StringIO(data.decode("utf-8-sig"))))
     if filename.lower().endswith(".xlsx"):
-        from openpyxl import load_workbook
+        # Import openpyxl only when needed so CSV imports work even if the
+        # Ubuntu virtual environment is missing its Excel dependency.
+        try:
+            from openpyxl import load_workbook
+        except ImportError as exc:
+            raise RuntimeError("Excel import support is not installed. Run '.venv/bin/python -m pip install -r requirements.txt' in the AutoKeeper installation, then restart the service.") from exc
         book = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
         try:
             sheet = book["Master"] if "Master" in book.sheetnames else book.active

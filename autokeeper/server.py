@@ -1,7 +1,9 @@
 """FastAPI web interface. Bind Uvicorn only to loopback behind UDA/Caddy."""
 import hmac
+import logging
 import os
 import sqlite3
+from zipfile import BadZipFile
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -21,6 +23,7 @@ from .importer import MAX_IMPORT, import_vehicles, read_import
 HERE = Path(__file__).resolve().parent
 basic = HTTPBasic(auto_error=False)
 templates = Jinja2Templates(directory=str(HERE / "web"))
+logger = logging.getLogger(__name__)
 
 
 class VehicleInput(BaseModel):
@@ -178,12 +181,26 @@ def create_app(db_path=None):
 
     @api.post("/import", dependencies=[Depends(require_write)])
     async def import_file(file: UploadFile = File(...), db=Depends(get_db)):
-        content = await file.read(MAX_IMPORT + 1)
         try:
+            content = await file.read(MAX_IMPORT + 1)
             records = read_import(content, file.filename or "")
             return import_vehicles(db, records)
-        except (ValueError, UnicodeError) as exc:
-            raise HTTPException(422, str(exc)) from exc
+        except (ValueError, UnicodeError, BadZipFile) as exc:
+            raise HTTPException(422, "Invalid spreadsheet or CSV: " + str(exc)) from exc
+        except RuntimeError as exc:
+            # openpyxl is an optional import at runtime; a stale Ubuntu venv
+            # would otherwise cause an opaque HTTP 500 on every .xlsx upload.
+            logger.warning("Vehicle import dependency unavailable: %s", type(exc).__name__)
+            raise HTTPException(503, str(exc)) from exc
+        except sqlite3.OperationalError as exc:
+            logger.exception("AutoKeeper import database write failed")
+            raise HTTPException(503, "Cannot write to vehicle database. Check the AutoKeeper service logs, SQLite directory permissions and available disk space.") from exc
+        except (OSError, sqlite3.DatabaseError) as exc:
+            logger.exception("AutoKeeper import storage problem")
+            raise HTTPException(503, "Vehicle import storage error. Check the AutoKeeper service logs.") from exc
+        except Exception as exc:
+            logger.exception("Unexpected AutoKeeper import failure")
+            raise HTTPException(500, "Unexpected import error. Inspect: sudo journalctl -u autokeeper.service -n 100 --no-pager") from exc
 
     app.include_router(api)
     return app

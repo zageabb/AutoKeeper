@@ -67,3 +67,8 @@ DVLA Vehicle Enquiry is separate from the optional DVSA MOT History API. For cri
 
 
 UDA service port: 5092 on 127.0.0.1. Direct LAN access to port 5092 is intentionally disabled in UDA authentication mode. Use the authenticated /apps/autokeeper/ URL. See docs/UBUNTU_DEPLOYMENT.md.
+
+
+### Troubleshooting Excel import
+
+For an import error, update the server venv dependencies: `cd /opt/autokeeper && .venv/bin/python -m pip install -r requirements.txt` then `sudo systemctl restart autokeeper.service`. The real path is the service `WorkingDirectory`/`ExecStart` in `sudo systemctl cat autokeeper.service`. An Excel file with a `Master` worksheet, normal registration/email columns and optional historical DVLA dates should upload successfully. If an error persists, inspect `sudo journalctl -u autokeeper.service -n 100 --no-pager`, redacting emails and tokens before sharing logs. A repeat import updates matching registrations, not duplicates.
