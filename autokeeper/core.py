@@ -1,0 +1,324 @@
+"""DVLA vehicle checks, persistence and email reminders.
+
+Secrets are environment variables; no live vehicle data belongs in Git.
+"""
+import os
+import re
+import sqlite3
+import smtplib
+from datetime import date, datetime, timezone
+from email.message import EmailMessage
+from pathlib import Path
+
+import requests
+
+DVLA_URL = "https://driver-vehicle-licensing.api.gov.uk/vehicle-enquiry/v1/vehicles"
+VEHICLE_COLUMNS = ("registration", "owner", "company", "email", "make", "model", "colour")
+
+
+def utcnow():
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def open_db(path=None):
+    path = path or os.environ.get("AUTOKEEPER_DB_PATH", "data/autokeeper.db")
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    db = sqlite3.connect(path, timeout=30)
+    db.row_factory = sqlite3.Row
+    db.execute("PRAGMA foreign_keys=ON")
+    db.execute("PRAGMA journal_mode=WAL")
+    return db
+
+
+def init_db(db):
+    db.executescript("""
+        CREATE TABLE IF NOT EXISTS vehicles (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          registration TEXT NOT NULL UNIQUE,
+          owner TEXT NOT NULL DEFAULT '',
+          company TEXT NOT NULL DEFAULT '',
+          email TEXT NOT NULL DEFAULT '',
+          make TEXT NOT NULL DEFAULT '',
+          model TEXT NOT NULL DEFAULT '',
+          colour TEXT NOT NULL DEFAULT '',
+          fuel_type TEXT NOT NULL DEFAULT '',
+          year_of_manufacture INTEGER,
+          mot_status TEXT NOT NULL DEFAULT '',
+          mot_expiry_date TEXT,
+          tax_status TEXT NOT NULL DEFAULT '',
+          tax_due_date TEXT,
+          last_checked_at TEXT,
+          last_error TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS checks (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          vehicle_id INTEGER NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
+          checked_at TEXT NOT NULL,
+          success INTEGER NOT NULL,
+          mot_expiry_date TEXT,
+          tax_due_date TEXT,
+          error TEXT
+        );
+        CREATE TABLE IF NOT EXISTS notifications (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          vehicle_id INTEGER NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
+          kind TEXT NOT NULL,
+          due_date TEXT NOT NULL,
+          stage TEXT NOT NULL,
+          recipient TEXT NOT NULL,
+          sent_at TEXT NOT NULL,
+          UNIQUE(vehicle_id, kind, due_date, stage, recipient)
+        );
+    """)
+    db.commit()
+
+
+def registration(value):
+    value = re.sub(r"[^A-Za-z0-9]", "", str(value or "")).upper()
+    if not re.fullmatch(r"[A-Z0-9]{2,10}", value):
+        raise ValueError("Enter a vehicle registration using 2–10 letters/numbers.")
+    return value
+
+
+def email_address(value):
+    value = str(value or "").strip().lower()
+    if value and (len(value) > 254 or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", value)):
+        raise ValueError("Invalid recipient email address.")
+    return value
+
+
+def save_vehicle(db, body, vehicle_id=None):
+    values = {k: str(body.get(k) or "").strip()[:140] for k in VEHICLE_COLUMNS}
+    values["registration"] = registration(values["registration"])
+    values["email"] = email_address(values["email"])
+    stamp = utcnow()
+    if vehicle_id is None:
+        cursor = db.execute("""
+            INSERT INTO vehicles(registration, owner, company, email, make, model, colour,
+                                 created_at, updated_at)
+            VALUES(:registration, :owner, :company, :email, :make, :model, :colour, :created, :updated)
+        """, {**values, "created": stamp, "updated": stamp})
+        vehicle_id = cursor.lastrowid
+    else:
+        if not get_vehicle(db, vehicle_id):
+            raise LookupError("Vehicle not found")
+        db.execute("""
+            UPDATE vehicles SET registration=:registration, owner=:owner, company=:company,
+              email=:email, make=:make, model=:model, colour=:colour, updated_at=:updated
+            WHERE id=:id
+        """, {**values, "updated": stamp, "id": vehicle_id})
+    db.commit()
+    return get_vehicle(db, vehicle_id)
+
+
+def get_vehicle(db, vehicle_id):
+    row = db.execute("SELECT * FROM vehicles WHERE id=?", (vehicle_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def iso_date(value):
+    try:
+        return date.fromisoformat(str(value)[:10]) if value else None
+    except (ValueError, TypeError):
+        return None
+
+
+def status(expiry, today=None):
+    today = today or date.today()
+    value = iso_date(expiry)
+    if not value:
+        return {"state": "unknown", "days": None}
+    days = (value - today).days
+    return {"state": "overdue" if days < 0 else "due" if days <= 30 else "ok",
+            "days": days}
+
+
+def view_vehicle(row, today=None):
+    item = dict(row)
+    item["mot"] = status(item["mot_expiry_date"], today)
+    item["tax"] = status(item["tax_due_date"], today)
+    if item["tax_status"].upper() == "SORN":
+        item["tax"] = {"state": "sorn", "days": None}
+    return item
+
+
+def get_dashboard(db, today=None):
+    rows = [view_vehicle(r, today) for r in db.execute(
+        "SELECT * FROM vehicles ORDER BY registration").fetchall()]
+    return {
+        "vehicles": rows,
+        "as_of": (today or date.today()).isoformat(),
+        "stats": {
+            "total": len(rows),
+            "mot_due": sum(v["mot"]["state"] == "due" for v in rows),
+            "tax_due": sum(v["tax"]["state"] == "due" for v in rows),
+            "mot_overdue": sum(v["mot"]["state"] == "overdue" for v in rows),
+            "tax_overdue": sum(v["tax"]["state"] == "overdue" for v in rows),
+            "attention": sum(v["mot"]["state"] in ("due", "overdue") or
+                             v["tax"]["state"] in ("due", "overdue") for v in rows),
+            "unchecked": sum(not v["last_checked_at"] for v in rows),
+            "errors": sum(bool(v["last_error"]) for v in rows),
+            "missing_email": sum(not v["email"] for v in rows),
+        },
+        "dvla_configured": bool(os.environ.get("DVLA_API_KEY")),
+        "smtp_configured": smtp_ready(),
+    }
+
+
+def dvla_query(vrm, key=None, client=requests):
+    key = key if key is not None else os.environ.get("DVLA_API_KEY")
+    if not key:
+        raise RuntimeError("DVLA_API_KEY is not configured")
+    try:
+        response = client.post(
+            DVLA_URL,
+            json={"registrationNumber": registration(vrm)},
+            headers={"x-api-key": key, "Accept": "application/json",
+                     "Content-Type": "application/json"},
+            timeout=12,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise RuntimeError("Unexpected DVLA response")
+        return payload
+    except requests.RequestException as exc:
+        code = getattr(getattr(exc, "response", None), "status_code", None)
+        raise RuntimeError("DVLA HTTP " + str(code or "network error")) from exc
+
+
+def refresh_vehicle(db, vehicle_id, key=None, client=requests):
+    vehicle = get_vehicle(db, vehicle_id)
+    if not vehicle:
+        raise LookupError("Vehicle not found")
+    checked = utcnow()
+    try:
+        payload = dvla_query(vehicle["registration"], key, client)
+    except (RuntimeError, ValueError) as exc:
+        error = str(exc)[:160]
+        db.execute("UPDATE vehicles SET last_checked_at=?, last_error=? WHERE id=?",
+                   (checked, error, vehicle_id))
+        db.execute("INSERT INTO checks(vehicle_id,checked_at,success,error) VALUES(?,?,0,?)",
+                   (vehicle_id, checked, error))
+        db.commit()
+        return {"success": False, "error": error}
+    mot_date = str(payload.get("motExpiryDate")) if iso_date(payload.get("motExpiryDate")) else None
+    tax_date = str(payload.get("taxDueDate")) if iso_date(payload.get("taxDueDate")) else None
+    db.execute("""
+        UPDATE vehicles SET make=?, colour=?, fuel_type=?, year_of_manufacture=?,
+            mot_status=?, mot_expiry_date=?, tax_status=?, tax_due_date=?,
+            last_checked_at=?, last_error=NULL, updated_at=?
+        WHERE id=?
+    """, (str(payload.get("make") or vehicle["make"])[:140],
+          str(payload.get("colour") or vehicle["colour"])[:140],
+          str(payload.get("fuelType") or "")[:80],
+          payload.get("yearOfManufacture") if isinstance(payload.get("yearOfManufacture"), int) else None,
+          str(payload.get("motStatus") or "")[:80], mot_date,
+          str(payload.get("taxStatus") or "")[:80], tax_date,
+          checked, checked, vehicle_id))
+    db.execute("""
+        INSERT INTO checks(vehicle_id,checked_at,success,mot_expiry_date,tax_due_date)
+        VALUES(?,?,1,?,?)
+    """, (vehicle_id, checked, mot_date, tax_date))
+    db.commit()
+    return {"success": True}
+
+
+def refresh_all(db, key=None, client=requests):
+    result = {"total": 0, "success": 0, "failed": 0}
+    for row in db.execute("SELECT id FROM vehicles ORDER BY registration").fetchall():
+        result["total"] += 1
+        checked = refresh_vehicle(db, row["id"], key=key, client=client)
+        result["success" if checked["success"] else "failed"] += 1
+    return result
+
+
+def reminder_stage(expiry, today=None):
+    parsed = iso_date(expiry)
+    if not parsed:
+        return None
+    days = (parsed - (today or date.today())).days
+    return ("overdue" if days < 0 else "7-days" if days <= 7 else
+            "14-days" if days <= 14 else "30-days" if days <= 30 else None)
+
+
+def smtp_ready(env=None):
+    env = os.environ if env is None else env
+    return all(env.get(k) for k in ("SMTP_HOST", "SMTP_USER", "SMTP_APP_PASSWORD", "SMTP_FROM"))
+
+
+def smtp_send(recipient, subject, body, env=None):
+    env = os.environ if env is None else env
+    if not smtp_ready(env):
+        raise RuntimeError("SMTP is not configured")
+    msg = EmailMessage()
+    msg["From"] = env["SMTP_FROM"]
+    msg["To"] = email_address(recipient)
+    msg["Subject"] = subject
+    msg.set_content(body)
+    host = env["SMTP_HOST"]
+    port = int(env.get("SMTP_PORT", "587"))
+    if port == 465:
+        with smtplib.SMTP_SSL(host, port, timeout=20) as smtp:
+            smtp.login(env["SMTP_USER"], env["SMTP_APP_PASSWORD"])
+            smtp.send_message(msg)
+    else:
+        with smtplib.SMTP(host, port, timeout=20) as smtp:
+            smtp.starttls()
+            smtp.login(env["SMTP_USER"], env["SMTP_APP_PASSWORD"])
+            smtp.send_message(msg)
+
+
+def reminders(db, today=None, dry_run=False, send=smtp_send, env=None):
+    today = today or date.today()
+    env = os.environ if env is None else env
+    stats = {"sent": 0, "would_send": 0, "already_sent": 0,
+             "missing_email": 0, "not_configured": 0, "failed": 0}
+    for row in db.execute("SELECT * FROM vehicles").fetchall():
+        v = dict(row)
+        for kind, due in (("MOT", v["mot_expiry_date"]), ("Tax", v["tax_due_date"])):
+            if kind == "Tax" and v["tax_status"].upper() == "SORN":
+                continue
+            stage = reminder_stage(due, today)
+            if not stage:
+                continue
+            if not v["email"]:
+                stats["missing_email"] += 1
+                continue
+            present = db.execute("""
+                SELECT 1 FROM notifications
+                WHERE vehicle_id=? AND kind=? AND due_date=? AND stage=? AND recipient=?
+            """, (v["id"], kind, due, stage, v["email"])).fetchone()
+            if present:
+                stats["already_sent"] += 1
+                continue
+            if dry_run:
+                stats["would_send"] += 1
+                continue
+            if not smtp_ready(env):
+                stats["not_configured"] += 1
+                continue
+            subject = "AutoKeeper: " + kind + " reminder for " + v["registration"]
+            description = "expired on" if stage == "overdue" else "is due on"
+            body = (
+                "AutoKeeper vehicle reminder\n\n"
+                "Registration: " + v["registration"] + "\n"
+                "Vehicle: " + v["make"] + " " + v["model"] + "\n"
+                + kind + " " + description + " " + due + ".\n\n"
+                "Please verify the current record using the official GOV.UK service.\n"
+                "This message is based on AutoKeeper's latest recorded check.\n"
+            )
+            try:
+                send(v["email"], subject, body, env=env)
+            except Exception:
+                stats["failed"] += 1
+                continue
+            db.execute("""
+                INSERT INTO notifications(vehicle_id,kind,due_date,stage,recipient,sent_at)
+                VALUES(?,?,?,?,?,?)
+            """, (v["id"], kind, due, stage, v["email"], utcnow()))
+            db.commit()
+            stats["sent"] += 1
+    return stats
