@@ -1,0 +1,31 @@
+name: AutoKeeper CI
+on:
+  push:
+    branches: [main, "feature/**"]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Check Python syntax
+        run: python -m compileall -q autokeeper tests
+      - name: Unit and API tests
+        run: python -m pytest tests -q
+      - name: Check static assets
+        run: |
+          test -f autokeeper/web/index.html
+          test -f autokeeper/web/static/app.js
+          test -f autokeeper/web/static/style.css
+      - name: Ensure private file formats are not tracked
+        run: |
+          ! git ls-files | grep -E '(^|/)\.env$|\.sqlite3?$|\.db$|\.xlsx$|\.ipynb$'

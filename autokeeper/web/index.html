@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#17202d">
+  <title>AutoKeeper · Vehicle register</title>
+  <link rel="stylesheet" href="{{ base_path }}/static/style.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar" aria-label="Main navigation">
+      <a class="brand" href="{{ base_path }}/" aria-label="AutoKeeper home">
+        <span class="brand-mark">A<span class="brand-dot">•</span></span>
+        <span class="brand-title">AutoKeeper<small>Fleet companion</small></span>
+      </a>
+      <div class="nav-caption">WORKSPACE</div>
+      <div class="nav-item selected"><span class="nav-icon">▦</span> Overview</div>
+      <div class="nav-item"><span class="nav-icon">▤</span> Vehicles</div>
+      <div class="nav-caption nav-secondary">OPERATIONS</div>
+      <a class="nav-item nav-link" href="#import-section"><span class="nav-icon">⇩</span> Import vehicles</a>
+      <div class="sidebar-foot">
+        <span class="connection-dot"></span> DVLA vehicle enquiry
+        <small>Weekly checks · MOT · Road tax</small>
+      </div>
+    </aside>
+
+    <main class="content">
+      <header class="topbar">
+        <div class="breadcrumb">Fleet management <span>/</span> Overview</div>
+        <div class="topright"><span class="live-pulse"></span> UK vehicle register <span class="avatar">AK</span></div>
+      </header>
+      <div class="page">
+        <section class="intro">
+          <div>
+            <div class="eyebrow">VEHICLE COMPLIANCE</div>
+            <h1>Fleet overview</h1>
+            <p>One place to track your vehicles, MOT certificates, road tax and upcoming renewals.</p>
+          </div>
+          <div class="page-actions">
+            <button class="btn btn-secondary" id="refresh-all" type="button">↻ <span>Check DVLA</span></button>
+            <button class="btn btn-primary" id="add-vehicle" type="button">＋ Add vehicle</button>
+          </div>
+        </section>
+
+        <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+
+        <section class="metrics" aria-label="Fleet statistics">
+          <article class="metric">
+            <div class="metric-heading">Registered vehicles <span class="metric-icon blue">▤</span></div>
+            <strong id="stat-total">—</strong><span class="metric-meta">Vehicles tracked</span>
+          </article>
+          <article class="metric">
+            <div class="metric-heading">MOT due in 30 days <span class="metric-icon amber">◷</span></div>
+            <strong id="stat-mot">—</strong><span class="metric-meta" id="stat-mot-meta">Upcoming renewals</span>
+          </article>
+          <article class="metric">
+            <div class="metric-heading">Road tax due <span class="metric-icon pink">▣</span></div>
+            <strong id="stat-tax">—</strong><span class="metric-meta" id="stat-tax-meta">Within the next 30 days</span>
+          </article>
+          <article class="metric">
+            <div class="metric-heading">Needs attention <span class="metric-icon red">!</span></div>
+            <strong id="stat-attention">—</strong><span class="metric-meta">Due or overdue</span>
+          </article>
+        </section>
+
+        <section class="insights" aria-label="Fleet health and status">
+          <article class="panel health-panel">
+            <div class="section-heading"><div><h2>Fleet health</h2><p>Expiry risk across your registered vehicles</p></div><span class="chip">Live register</span></div>
+            <div class="health-center">
+              <div class="health-ring" id="health-ring"><div><strong id="health-number">—</strong><span>clear</span></div></div>
+              <div class="health-summary"><strong id="health-message">Getting started</strong><span id="health-description">Add a vehicle to see its current status.</span></div>
+            </div>
+            <div class="legend"><span><i class="legend-dot green"></i> No renewal due</span><span><i class="legend-dot orange"></i> Action required</span></div>
+          </article>
+          <article class="panel status-panel">
+            <div class="section-heading"><div><h2>System status</h2><p>Integration and notification readiness</p></div></div>
+            <div class="system-row"><span class="system-icon">↻</span><div><strong>DVLA checks</strong><small>Vehicle Enquiry Service</small></div><span class="status-chip" id="dvla-status">Checking…</span></div>
+            <div class="system-row"><span class="system-icon">✉</span><div><strong>Email reminders</strong><small>Scheduled, deduplicated alerts</small></div><span class="status-chip" id="smtp-status">Checking…</span></div>
+            <div class="system-row"><span class="system-icon">▤</span><div><strong>Vehicles not yet checked</strong><small>Or waiting for their first DVLA lookup</small></div><span class="status-count" id="unchecked-count">—</span></div>
+            <div class="system-row"><span class="system-icon">⚠</span><div><strong>Missing recipient emails</strong><small>Vehicles that cannot receive a reminder</small></div><span class="status-count" id="email-count">—</span></div>
+          </article>
+        </section>
+
+        <section class="panel table-panel" id="vehicles">
+          <div class="table-top">
+            <div><h2>Vehicle register</h2><p>Check compliance, assign recipients and update vehicle records</p></div>
+            <div class="table-controls">
+              <label class="search-wrap"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Search reg, driver, company…" aria-label="Search vehicles"></label>
+              <select id="filter" aria-label="Filter vehicles"><option value="all">All vehicles</option><option value="attention">Action required</option><option value="unchecked">Not checked</option><option value="missing-email">No email</option></select>
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead><tr><th>Vehicle</th><th>Owner / company</th><th>MOT</th><th>Road tax</th><th>Reminder email</th><th>Last checked</th><th class="actions-heading">Actions</th></tr></thead>
+              <tbody id="vehicle-rows"><tr><td colspan="7" class="empty">Loading vehicles…</td></tr></tbody>
+            </table>
+          </div>
+          <div class="table-footer"><span id="record-count">0 vehicles</span><span>Dates and statuses supplied by DVLA when available</span></div>
+        </section>
+
+        <section class="panel import-panel" id="import-section">
+          <div><h2>Import your vehicles</h2><p>Load a <b>Master Car List</b> Excel file or a CSV. Existing registrations are updated rather than duplicated. Files stay on your server and are never committed to Git.</p></div>
+          <form id="import-form" class="import-actions">
+            <input type="file" id="import-file" name="file" accept=".xlsx,.csv" aria-label="Import Excel or CSV">
+            <button class="btn btn-secondary" type="submit">Import file</button>
+          </form>
+        </section>
+        <footer class="page-footer">AutoKeeper · Your vehicles. Your records. Your reminders. <button class="link-button" id="preview-reminders">Preview reminders</button></footer>
+      </div>
+    </main>
+  </div>
+
+  <dialog id="vehicle-dialog" aria-labelledby="dialog-title">
+    <form id="vehicle-form" method="dialog">
+      <div class="dialog-head"><div><div class="eyebrow">VEHICLE DETAILS</div><h2 id="dialog-title">Add a vehicle</h2></div><button type="button" class="close-btn" id="close-dialog" aria-label="Close">×</button></div>
+      <div class="dialog-body">
+        <div class="form-grid">
+          <label class="field"><span>Registration <b>*</b></span><input name="registration" id="field-registration" required maxlength="12" placeholder="AB12 CDE" autocomplete="off"></label>
+          <label class="field"><span>Recipient email</span><input name="email" id="field-email" type="email" placeholder="driver@example.co.uk"></label>
+          <label class="field"><span>Owner / driver</span><input name="owner" id="field-owner" maxlength="140" placeholder="Driver's name"></label>
+          <label class="field"><span>Company</span><input name="company" id="field-company" maxlength="140" placeholder="Company or division"></label>
+          <label class="field"><span>Make</span><input name="make" id="field-make" maxlength="140" placeholder="e.g. Ford"></label>
+          <label class="field"><span>Model</span><input name="model" id="field-model" maxlength="140" placeholder="e.g. Focus"></label>
+          <label class="field"><span>Colour</span><input name="colour" id="field-colour" maxlength="140" placeholder="e.g. Blue"></label>
+        </div>
+        <div class="form-note">MOT and road tax information will be populated by the DVLA check. Model and recipient details can be maintained here.</div>
+      </div>
+      <div class="dialog-footer"><button type="button" class="btn btn-secondary" id="cancel-dialog">Cancel</button><button type="submit" class="btn btn-primary">Save vehicle</button></div>
+    </form>
+  </dialog>
+  <script>window.AUTO_BASE = {{ base_path | tojson }};</script>
+  <script src="{{ base_path }}/static/app.js" defer></script>
+</body>
+</html>
