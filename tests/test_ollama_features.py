@@ -46,7 +46,7 @@ class KnowledgeTests(unittest.TestCase):
         )
         html = knowledge.markdown_html(source)
         self.assertIn("<table", html)
-        self.assertIn("<del>", html)
+        self.assertIn("<s>", html)
         self.assertIn("<pre>", html)
         self.assertIn("checkbox", html)
         self.assertIn("footnote", html)
