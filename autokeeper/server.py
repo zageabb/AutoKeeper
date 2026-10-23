@@ -3,6 +3,7 @@ import hmac
 import logging
 import os
 import sqlite3
+from typing import Literal
 from zipfile import BadZipFile
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -172,10 +173,10 @@ def create_app(db_path=None):
             raise HTTPException(404, str(exc)) from exc
 
     @api.post("/refresh-all", dependencies=[Depends(require_write)])
-    def refresh_all(db=Depends(get_db)):
+    def refresh_all(scope: Literal["active", "disposed", "all"] = "active", db=Depends(get_db)):
         if not os.getenv("DVLA_API_KEY"):
             raise HTTPException(503, "DVLA_API_KEY is not configured")
-        return core.refresh_all(db)
+        return core.refresh_all(db, scope=scope)
 
     @api.post("/reminders/preview", dependencies=[Depends(require_write)])
     def preview_reminders(db=Depends(get_db)):

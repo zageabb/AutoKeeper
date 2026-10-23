@@ -146,11 +146,12 @@ class AutoKeeperTests(unittest.TestCase):
         dashboard = core.get_dashboard(self.db, today=day)
         disposed = next(v for v in dashboard["vehicles"] if v["id"] == vehicle["id"])
         self.assertEqual(disposed["lifecycle_state"], "disposed")
-        self.assertEqual(disposed["mot"]["state"], "disposed")
+        self.assertEqual(disposed["mot"]["state"], "overdue")
         self.assertEqual(disposed["mot_expiry_date"], "2026-10-01")
         self.assertEqual(dashboard["stats"]["active"], 1)
         self.assertEqual(dashboard["stats"]["disposed"], 1)
         self.assertEqual(dashboard["stats"]["mot_overdue"], 0)
+        self.assertEqual(dashboard["stats"]["attention"], 0)
         self.assertEqual(dashboard["companies"][0]["stats"]["disposed"], 1)
         self.assertEqual(core.reminders(self.db, today=day, dry_run=True)["would_send"], 0)
         response = Mock()
@@ -171,6 +172,72 @@ class AutoKeeperTests(unittest.TestCase):
                         (vehicle["id"],))
         self.db.commit()
         self.assertEqual(core.reminders(self.db, today=day, dry_run=True)["would_send"], 2)
+
+    def test_explicit_disposed_batch_refresh_and_active_only_default(self):
+        from unittest.mock import Mock
+        disposed = core.save_vehicle(self.db, {
+            "registration": "ZZ20ZZZ", "company": "Historical",
+            "disposal_date": "2025-01-01"
+        })
+        active = core.save_vehicle(self.db, {
+            "registration": "YY21YYY", "company": "Historical"
+        })
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.json.return_value = {
+            "make": "Example", "taxStatus": "Taxed", "motStatus": "Valid",
+            "motExpiryDate": "2027-02-01", "taxDueDate": "2027-04-01",
+        }
+        client = Mock()
+        client.post.return_value = response
+        manual = core.refresh_all(self.db, key="fake", client=client,
+                                  scope="disposed")
+        self.assertEqual(manual["total"], 1)
+        self.assertEqual(manual["success"], 1)
+        self.assertEqual(manual["skipped_active"], 1)
+        self.assertEqual(client.post.call_count, 1)
+        self.assertEqual(client.post.call_args.kwargs["json"]["registrationNumber"], "ZZ20ZZZ")
+        historical = core.view_vehicle(core.get_vehicle(self.db, disposed["id"]),
+                                       date(2026, 10, 23))
+        self.assertEqual(historical["lifecycle_state"], "disposed")
+        self.assertEqual(historical["mot_status"], "Valid")
+        self.assertEqual(historical["tax_status"], "Taxed")
+        self.assertEqual(historical["mot"]["state"], "ok")
+        self.assertEqual(historical["tax"]["state"], "ok")
+        self.assertEqual(core.get_vehicle(self.db, active["id"])["last_checked_at"], None)
+        self.assertEqual(core.fleet_stats([historical])["attention"], 0)
+        self.assertEqual(core.fleet_stats([historical])["clear"], 0)
+
+        weekly = core.refresh_all(self.db, key="fake", client=client)
+        self.assertEqual(weekly["total"], 1)
+        self.assertEqual(weekly["skipped_disposed"], 1)
+        self.assertEqual(client.post.call_count, 2)
+        self.assertEqual(client.post.call_args.kwargs["json"]["registrationNumber"], "YY21YYY")
+        with self.assertRaisesRegex(ValueError, "scope"):
+            core.refresh_all(self.db, scope="bad")
+
+    def test_disposed_overdue_is_visible_but_not_an_active_warning(self):
+        record = core.save_vehicle(self.db, {
+            "registration": "AA22AAA", "disposal_date": "2025-06-01",
+            "email": "test@example.org"
+        })
+        self.db.execute("""
+            UPDATE vehicles SET mot_expiry_date='2025-02-01',
+                tax_due_date='2025-03-01', tax_status='Taxed'
+            WHERE id=?
+        """, (record["id"],))
+        self.db.commit()
+        snapshot = core.get_dashboard(self.db, date(2026, 10, 23))
+        vehicle = snapshot["vehicles"][0]
+        self.assertEqual(vehicle["lifecycle_state"], "disposed")
+        self.assertEqual(vehicle["mot"]["state"], "overdue")
+        self.assertEqual(vehicle["tax"]["state"], "overdue")
+        self.assertEqual(snapshot["stats"]["mot_overdue"], 0)
+        self.assertEqual(snapshot["stats"]["tax_overdue"], 0)
+        self.assertEqual(snapshot["stats"]["attention"], 0)
+        self.assertEqual(snapshot["companies"][0]["stats"]["attention"], 0)
+        self.assertEqual(core.reminders(self.db, today=date(2026, 10, 23),
+                                         dry_run=True)["would_send"], 0)
 
     def test_lifecycle_import_and_repeat_preserves_existing_dates(self):
         rows = [{

@@ -38,7 +38,8 @@
             <p>One place to track your vehicles, MOT certificates, road tax and upcoming renewals.</p>
           </div>
           <div class="page-actions">
-            <button class="btn btn-secondary" id="refresh-all" type="button" title="Refresh DVLA details for ALL registered vehicles">↻ <span>Check DVLA (all)</span></button>
+            <button class="btn btn-secondary" id="refresh-all" type="button" title="Refresh DVLA details for active vehicles">↻ <span>Check active</span></button>
+            <button class="btn btn-secondary" id="refresh-disposed" type="button" title="Check DVLA MOT and tax data for all disposed vehicles">↻ <span>Check disposed</span></button>
             <button class="btn btn-primary" id="add-vehicle" type="button">＋ Add vehicle</button>
           </div>
         </section>
@@ -92,7 +93,7 @@
 
         <section class="panel table-panel" id="vehicles">
           <div class="table-top">
-            <div><h2>Vehicle register</h2><p>Grouped by company · includes acquisition and disposal history</p></div>
+            <div><h2>Vehicle register</h2><p>Grouped by company · including current DVLA status of disposed vehicles</p></div>
             <div class="table-controls">
               <label class="search-wrap"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Search reg, driver, company…" aria-label="Search vehicles"></label>
               <select id="filter" aria-label="Filter vehicles"><option value="all">All vehicles</option><option value="active">Active vehicles</option><option value="disposed">Disposed vehicles</option><option value="attention">Action required</option><option value="unchecked">Not checked</option><option value="missing-email">No email</option></select>
@@ -104,7 +105,7 @@
               <tbody id="vehicle-rows"><tr><td colspan="9" class="empty">Loading vehicles…</td></tr></tbody>
             </table>
           </div>
-          <div class="table-footer"><span id="record-count">0 vehicles</span><span>Dates and statuses supplied by DVLA when available</span></div>
+          <div class="table-footer"><span id="record-count">0 vehicles</span><span>Taxed or MOT-valid does not prove that a disposed vehicle is physically on the road.</span></div>
         </section>
 
         <section class="panel import-panel" id="import-section">

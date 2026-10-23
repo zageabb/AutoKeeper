@@ -104,3 +104,8 @@ Every vehicle now has optional Acquisition Date and Disposal Date fields (stored
 - Existing SQLite files are migrated automatically: two nullable date columns are added on startup without replacing rows. Back up the database before upgrading.
 
 This records ownership history only. It does not change DVLA keeper data or submit disposal paperwork to DVLA.
+
+
+## DVLA checks after vehicle disposal
+
+Disposed vehicles can still be checked against the DVLA Vehicle Enquiry Service. Use the circular refresh icon beside one disposed registration or click **Check disposed** to look up all disposed registrations. **Check active** continues to check active vehicles only, and the weekly systemd worker remains active-only. The register displays the latest MOT expiry/status and tax due/status for disposed registrations, with the raw DVLA status beneath each date. Ownership/disposal dates are never modified by a DVLA lookup. The vehicle stays marked Disposed and is excluded from MOT/tax compliance alert totals, automatic weekly checks and emailed reminders. Failed lookups retain previous results and show a check error. A record of a taxed vehicle or valid MOT is not evidence that it was physically on the road; it only reports DVLA status as of the lookup. Use the Disposed vehicles filter to review them.

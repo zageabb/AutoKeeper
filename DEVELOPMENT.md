@@ -29,3 +29,5 @@ Code committed != CI tested != Ubuntu deployed != DVLA check successful != email
 | AUTO-014 | Suppress MOT due/overdue warnings for SORN vehicles | Source change and regression tests for MOT/tax badges, fleet/company counts, notification suppression and restoration after SORN ends. CI and live Ubuntu check separate. |
 
 | AUTO-015 | Acquisition and disposal dates | Nullable SQLite lifecycle fields with idempotent schema migration; per-vehicle date inputs, grouped register columns, imports, disposed compliance/reminder handling and synthetic migration/API tests. Live Ubuntu rollout still requires deployment and smoke testing. |
+
+| AUTO-016 | Manual DVLA checks on disposed vehicles | API accepts disposed-only manual check; UI shows current MOT/tax for disposed vehicles, owned-fleet warnings exclude them, weekly worker/reminders remain active-only. Includes synthetic API/regression tests; live DVLA and Ubuntu rollout unverified. |

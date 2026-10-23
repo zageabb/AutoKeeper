@@ -199,11 +199,9 @@ def view_vehicle(row, today=None):
     item["tax"] = status(item["tax_due_date"], today)
     item["lifecycle_state"] = ("disposed" if is_disposed(item, today) else
                                "scheduled" if iso_date(item.get("disposal_date")) else "active")
-    if item["lifecycle_state"] == "disposed":
-        # Keep the underlying DVLA dates for historical reporting.
-        item["mot"] = {"state": "disposed", "days": None}
-        item["tax"] = {"state": "disposed", "days": None}
-    elif is_sorn(item["tax_status"]):
+    # Disposal is an ownership event, not a DVLA MOT/tax state.
+    # Keep actual DVLA results visible even when the vehicle is disposed.
+    if is_sorn(item["tax_status"]):
         # SORN does not extend or cancel the underlying MOT expiry date.
         # Pause the dashboard's due/overdue warning while kept off road,
         # then resume the ordinary MOT rule when DVLA no longer reports SORN.
@@ -232,14 +230,14 @@ def fleet_stats(rows):
             for v in active_rows
         ),
         "total": len(rows),
-        "mot_due": sum(v["mot"]["state"] == "due" for v in rows),
-        "tax_due": sum(v["tax"]["state"] == "due" for v in rows),
-        "mot_overdue": sum(v["mot"]["state"] == "overdue" for v in rows),
-        "tax_overdue": sum(v["tax"]["state"] == "overdue" for v in rows),
+        "mot_due": sum(v["mot"]["state"] == "due" for v in active_rows),
+        "tax_due": sum(v["tax"]["state"] == "due" for v in active_rows),
+        "mot_overdue": sum(v["mot"]["state"] == "overdue" for v in active_rows),
+        "tax_overdue": sum(v["tax"]["state"] == "overdue" for v in active_rows),
         "attention": sum(
             v["mot"]["state"] in ("due", "overdue")
             or v["tax"]["state"] in ("due", "overdue")
-            for v in rows
+            for v in active_rows
         ),
         "unchecked": sum(not v["last_checked_at"] for v in active_rows),
         "errors": sum(bool(v["last_error"]) for v in active_rows),
@@ -346,11 +344,20 @@ def refresh_vehicle(db, vehicle_id, key=None, client=requests):
     return {"success": True}
 
 
-def refresh_all(db, key=None, client=requests):
+def refresh_all(db, key=None, client=requests, scope="active"):
+    """Batch DVLA check: weekly worker defaults to active, UI can select disposed."""
+    if scope not in ("active", "disposed", "all"):
+        raise ValueError("Invalid DVLA check scope")
     result = {"total": 0, "success": 0, "failed": 0, "skipped_disposed": 0}
+    if scope == "disposed":
+        result["skipped_active"] = 0
     for row in db.execute("SELECT * FROM vehicles ORDER BY registration").fetchall():
-        if is_disposed(dict(row)):
+        disposed = is_disposed(dict(row))
+        if scope == "active" and disposed:
             result["skipped_disposed"] += 1
+            continue
+        if scope == "disposed" and not disposed:
+            result["skipped_active"] += 1
             continue
         result["total"] += 1
         checked = refresh_vehicle(db, row["id"], key=key, client=client)
