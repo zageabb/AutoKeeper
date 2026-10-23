@@ -23,3 +23,5 @@ The 45 rows in the source workbook are deliberately not committed. The original 
 Code committed != CI tested != Ubuntu deployed != DVLA check successful != email delivered. Record each result separately after inspection.
 
 | AUTO-012 | Excel upload HTTP 500 investigation | Added synthetic 45-vehicle full .xlsx upload regression; reported missing openpyxl, storage errors and invalid ZIP as actionable HTTP responses. Live UDA server not inspected; verify after deployment. |
+
+| AUTO-013 | Group the dashboard and register by company | Source implementation: API company summaries, filter scoped dashboard KPIs, collapsible register headings, suggestions on vehicle form; CI and live Ubuntu validation to be recorded separately. |

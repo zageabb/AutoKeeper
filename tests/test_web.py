@@ -77,6 +77,8 @@ class WebTests(unittest.TestCase):
                 self.assertEqual(js.status_code, 200)
                 self.assertIn("text/css", css.headers.get("content-type", ""))
                 self.assertIn("javascript", js.headers.get("content-type", ""))
+                self.assertIn('id="company-select"', home.text)
+                self.assertIn("data-company-key", js.text)
 
 
     def test_import_generated_workbook_layout(self):

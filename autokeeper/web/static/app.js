@@ -8,6 +8,10 @@
   const form = document.getElementById("vehicle-form");
   const notice = document.getElementById("notice");
   let records = [];
+  let companies = [];
+  let fleetStats = null;
+  let selectedCompany = "all";
+  const collapsedCompanies = new Set();
   let editing = null;
 
   function byId(id) { return document.getElementById(id); }
@@ -60,49 +64,40 @@
       escapeHTML(statusText(value)) + '</span><span class="date-text">' +
       escapeHTML(formatDate(dateText)) + '</span></span>';
   }
-  function showRows() {
-    const q = byId("search").value.trim().toLowerCase();
-    const filter = byId("filter").value;
-    const filtered = records.filter(function (r) {
-      if (q && ![r.registration,r.owner,r.company,r.make,r.model,r.email]
-        .some(function (v) { return String(v || "").toLowerCase().includes(q); })) return false;
-      if (filter === "attention" && !["due","overdue"].includes(r.mot.state) &&
-          !["due","overdue"].includes(r.tax.state)) return false;
-      if (filter === "unchecked" && r.last_checked_at) return false;
-      if (filter === "missing-email" && r.email) return false;
-      return true;
-    });
-    if (!filtered.length) {
-      rowsElement.innerHTML = '<tr><td colspan="7" class="empty">No matching vehicles. Add a vehicle or change the filter.</td></tr>';
-    } else {
-      rowsElement.innerHTML = filtered.map(function (v) {
-        const car = escapeHTML([v.make,v.model].filter(Boolean).join(" ") || "Vehicle details pending");
-        const driver = escapeHTML(v.owner || "Not assigned");
-        return '<tr>' +
-          '<td><div class="vehicle-name"><span class="reg-plate">' + escapeHTML(v.registration) +
-          '</span><div class="vehicle-caption">' + car + '</div></div></td>' +
-          '<td><div class="primary-cell">' + driver + '</div><div class="secondary-cell">' +
-            escapeHTML(v.company || "—") + '</div></td>' +
-          '<td>' + dueCell(v.mot, v.mot_expiry_date) + '</td>' +
-          '<td>' + dueCell(v.tax, v.tax_due_date) + '</td>' +
-          '<td><span class="email-cell">' + escapeHTML(v.email || "Not set") + '</span></td>' +
-          '<td><div class="secondary-cell">' + escapeHTML(
-            v.last_checked_at ? v.last_checked_at.slice(0,10) : "Never") +
-            '</div>' + (v.last_error ? '<div class="error-small">' + escapeHTML(v.last_error) + '</div>' : '') + '</td>' +
-          '<td class="row-actions"><button class="small-button" data-action="edit" data-id="' + v.id +
-          '" type="button">Edit</button><button class="icon-button" data-action="check" data-id="' + v.id +
-          '" type="button" title="Check with DVLA" aria-label="Refresh ' + escapeHTML(v.registration) +
-          '">↻</button><button class="icon-button delete" data-action="delete" data-id="' + v.id +
-          '" type="button" title="Remove" aria-label="Delete ' + escapeHTML(v.registration) + '">×</button></td>' +
-          '</tr>';
-      }).join("");
-    }
-    setText("record-count", filtered.length + " of " + records.length + " vehicles");
+  function companyScopedVehicles() {
+    return selectedCompany === "all" ? records :
+      records.filter(function (v) { return "company:" + v.company_key === selectedCompany; });
   }
-  async function load() {
-    const data = await api("/api/dashboard", {method:"GET"});
-    records = data.vehicles;
-    const stats = data.stats;
+  function selectedCompanyRecord() {
+    if (selectedCompany === "all") return null;
+    return companies.find(function (c) { return "company:" + c.key === selectedCompany; }) || null;
+  }
+  function renderCompanySelector() {
+    const select = byId("company-select");
+    const choices = ['<option value="all">All companies</option>'].concat(
+      companies.map(function (c) {
+        return '<option value="' + escapeHTML("company:" + c.key) + '">' +
+          escapeHTML(c.name) + ' (' + c.stats.total + ')</option>';
+      })
+    );
+    select.innerHTML = choices.join("");
+    const valid = selectedCompany === "all" ||
+      companies.some(function (c) { return "company:" + c.key === selectedCompany; });
+    if (!valid) selectedCompany = "all";
+    select.value = selectedCompany;
+    byId("company-suggestions").innerHTML = companies.filter(function (c) {
+      return c.key !== "";
+    }).map(function (c) {
+      return '<option value="' + escapeHTML(c.name) + '"></option>';
+    }).join("");
+  }
+  function updateCompanyStats() {
+    const chosen = selectedCompanyRecord();
+    const stats = chosen ? chosen.stats : fleetStats;
+    if (!stats) return;
+    const scope = chosen ? chosen.name : "All companies";
+    setText("company-scope", scope + " · " + stats.total + " vehicles" +
+      (!chosen ? " across " + companies.length + " company groups" : ""));
     setText("stat-total", stats.total);
     setText("stat-mot", stats.mot_due);
     setText("stat-tax", stats.tax_due);
@@ -111,16 +106,99 @@
     setText("stat-tax-meta", stats.tax_overdue ? stats.tax_overdue + " already overdue" : "Within the next 30 days");
     setText("unchecked-count", stats.unchecked);
     setText("email-count", stats.missing_email);
-    setText("dvla-status", data.dvla_configured ? "Configured" : "Needs API key");
-    byId("dvla-status").className = "status-chip " + (data.dvla_configured ? "active" : "pending");
-    setText("smtp-status", data.smtp_configured ? "Configured" : "Needs credentials");
-    byId("smtp-status").className = "status-chip " + (data.smtp_configured ? "active" : "pending");
     const clear = stats.clear;
     const pct = stats.total ? Math.round(100 * clear / stats.total) : 0;
     byId("health-ring").style.setProperty("--progress", String(pct) + "%");
     setText("health-number", stats.total ? pct + "%" : "—");
-    setText("health-message", stats.total ? clear + " of " + stats.total + " without imminent expiry" : "No vehicles yet");
-    setText("health-description", stats.total ? stats.unknown + " vehicles have missing expiry information; check DVLA before treating them as compliant." : "Add a vehicle to see the health summary.");
+    setText("health-message", stats.total ?
+      clear + " of " + stats.total + " without imminent expiry" : "No vehicles yet");
+    setText("health-description", stats.total ?
+      stats.unknown + " vehicles have missing expiry information; check DVLA before treating them as compliant." :
+      "Add a vehicle to see the health summary.");
+  }
+  function isDue(state) {
+    return state === "due" || state === "overdue";
+  }
+  function vehicleRow(v) {
+    const car = escapeHTML([v.make,v.model].filter(Boolean).join(" ") || "Vehicle details pending");
+    const driver = escapeHTML(v.owner || "Not assigned");
+    return '<tr>' +
+      '<td><div class="vehicle-name"><span class="reg-plate">' + escapeHTML(v.registration) +
+      '</span><div class="vehicle-caption">' + car + '</div></div></td>' +
+      '<td><div class="primary-cell">' + driver + '</div><div class="secondary-cell">' +
+        escapeHTML(v.company || "—") + '</div></td>' +
+      '<td>' + dueCell(v.mot, v.mot_expiry_date) + '</td>' +
+      '<td>' + dueCell(v.tax, v.tax_due_date) + '</td>' +
+      '<td><span class="email-cell">' + escapeHTML(v.email || "Not set") + '</span></td>' +
+      '<td><div class="secondary-cell">' + escapeHTML(
+        v.last_checked_at ? v.last_checked_at.slice(0,10) : "Never") +
+        '</div>' + (v.last_error ? '<div class="error-small">' + escapeHTML(v.last_error) + '</div>' : '') + '</td>' +
+      '<td class="row-actions"><button class="small-button" data-action="edit" data-id="' + v.id +
+      '" type="button">Edit</button><button class="icon-button" data-action="check" data-id="' + v.id +
+      '" type="button" title="Check with DVLA" aria-label="Refresh ' + escapeHTML(v.registration) +
+      '">↻</button><button class="icon-button delete" data-action="delete" data-id="' + v.id +
+      '" type="button" title="Remove" aria-label="Delete ' + escapeHTML(v.registration) + '">×</button></td>' +
+      '</tr>';
+  }
+  function companyHeader(group, entries) {
+    const collapsed = collapsedCompanies.has(group.key);
+    const dueMOT = entries.filter(function (v) { return isDue(v.mot.state); }).length;
+    const dueTax = entries.filter(function (v) { return isDue(v.tax.state); }).length;
+    const attention = entries.filter(function (v) {
+      return isDue(v.mot.state) || isDue(v.tax.state);
+    }).length;
+    return '<tr class="company-group-row"><td colspan="7">' +
+      '<button class="company-toggle" type="button" data-company-key="' +
+      escapeHTML(group.key) + '" aria-expanded="' + (!collapsed) + '">' +
+      '<span class="company-group-title"><span class="company-chevron" aria-hidden="true">' +
+      (collapsed ? "▸" : "▾") + '</span><span>' + escapeHTML(group.name) + '</span></span>' +
+      '<span class="company-group-metrics"><span>' + entries.length + ' vehicle' +
+      (entries.length === 1 ? '' : 's') + '</span><span>MOT due / overdue: ' +
+      dueMOT + '</span><span>Tax due / overdue: ' + dueTax +
+      '</span><span class="company-attention">Attention: ' + attention +
+      '</span></span></button></td></tr>';
+  }
+  function showRows() {
+    const q = byId("search").value.trim().toLowerCase();
+    const filter = byId("filter").value;
+    const scoped = companyScopedVehicles();
+    const filtered = scoped.filter(function (v) {
+      if (q && ![v.registration,v.owner,v.company,v.make,v.model,v.email]
+        .some(function (s) { return String(s || "").toLowerCase().includes(q); })) return false;
+      if (filter === "attention" && !isDue(v.mot.state) && !isDue(v.tax.state)) return false;
+      if (filter === "unchecked" && v.last_checked_at) return false;
+      if (filter === "missing-email" && v.email) return false;
+      return true;
+    });
+    if (!filtered.length) {
+      rowsElement.innerHTML = '<tr><td colspan="7" class="empty">No matching vehicles. Try another company or filter.</td></tr>';
+    } else {
+      const buckets = new Map();
+      for (const v of filtered) {
+        if (!buckets.has(v.company_key)) buckets.set(v.company_key, []);
+        buckets.get(v.company_key).push(v);
+      }
+      rowsElement.innerHTML = companies.filter(function (g) {
+        return buckets.has(g.key);
+      }).map(function (g) {
+        return companyHeader(g, buckets.get(g.key)) +
+          (collapsedCompanies.has(g.key) ? "" : buckets.get(g.key).map(vehicleRow).join(""));
+      }).join("");
+    }
+    setText("record-count", filtered.length + " matching of " + scoped.length +
+      " vehicles" + (selectedCompany === "all" ? " (all companies)" : ""));
+  }
+  async function load() {
+    const data = await api("/api/dashboard", {method:"GET"});
+    records = data.vehicles;
+    companies = data.companies || [];
+    fleetStats = data.stats;
+    renderCompanySelector();
+    updateCompanyStats();
+    setText("dvla-status", data.dvla_configured ? "Configured" : "Needs API key");
+    byId("dvla-status").className = "status-chip " + (data.dvla_configured ? "active" : "pending");
+    setText("smtp-status", data.smtp_configured ? "Configured" : "Needs credentials");
+    byId("smtp-status").className = "status-chip " + (data.smtp_configured ? "active" : "pending");
     showRows();
   }
   function openDialog(row) {
@@ -128,7 +206,9 @@
     setText("dialog-title", row ? "Edit vehicle" : "Add a vehicle");
     form.reset();
     ["registration","owner","company","email","make","model","colour"].forEach(function (name) {
-      byId("field-" + name).value = row ? row[name] || "" : "";
+      const selected = selectedCompanyRecord();
+      byId("field-" + name).value = row ? row[name] || "" :
+        (name === "company" && selected && selected.key !== "" ? selected.name : "");
     });
     dialog.showModal();
   }
@@ -152,6 +232,14 @@
     });
   });
   rowsElement.addEventListener("click", function (event) {
+    const toggle = event.target.closest("button[data-company-key]");
+    if (toggle) {
+      const key = toggle.dataset.companyKey;
+      if (collapsedCompanies.has(key)) collapsedCompanies.delete(key);
+      else collapsedCompanies.add(key);
+      showRows();
+      return;
+    }
     const button = event.target.closest("button[data-action]");
     if (!button) return;
     const id = Number(button.dataset.id);
@@ -208,6 +296,11 @@
       byId("import-file").value = "";
       await load();
     });
+  });
+  byId("company-select").addEventListener("change", function () {
+    selectedCompany = byId("company-select").value;
+    updateCompanyStats();
+    showRows();
   });
   byId("search").addEventListener("input", showRows);
   byId("filter").addEventListener("change", showRows);

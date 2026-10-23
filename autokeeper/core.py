@@ -140,6 +140,7 @@ def status(expiry, today=None):
 
 def view_vehicle(row, today=None):
     item = dict(row)
+    item["company_key"] = company_key(item.get("company"))
     item["mot"] = status(item["mot_expiry_date"], today)
     item["tax"] = status(item["tax_due_date"], today)
     if item["tax_status"].upper() == "SORN":

@@ -38,12 +38,20 @@
             <p>One place to track your vehicles, MOT certificates, road tax and upcoming renewals.</p>
           </div>
           <div class="page-actions">
-            <button class="btn btn-secondary" id="refresh-all" type="button">↻ <span>Check DVLA</span></button>
+            <button class="btn btn-secondary" id="refresh-all" type="button" title="Refresh DVLA details for ALL registered vehicles">↻ <span>Check DVLA (all)</span></button>
             <button class="btn btn-primary" id="add-vehicle" type="button">＋ Add vehicle</button>
           </div>
         </section>
 
         <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+
+        <section class="company-bar" aria-label="Company view">
+          <div class="company-picker">
+            <label for="company-select">VIEW BY COMPANY</label>
+            <select id="company-select" aria-label="Select company"><option value="all">All companies</option></select>
+          </div>
+          <p id="company-scope" role="status" aria-live="polite">Showing all registered vehicles</p>
+        </section>
 
         <section class="metrics" aria-label="Fleet statistics">
           <article class="metric">
@@ -84,7 +92,7 @@
 
         <section class="panel table-panel" id="vehicles">
           <div class="table-top">
-            <div><h2>Vehicle register</h2><p>Check compliance, assign recipients and update vehicle records</p></div>
+            <div><h2>Vehicle register</h2><p>Grouped by company · expand or collapse each group to review vehicles and renewal dates</p></div>
             <div class="table-controls">
               <label class="search-wrap"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Search reg, driver, company…" aria-label="Search vehicles"></label>
               <select id="filter" aria-label="Filter vehicles"><option value="all">All vehicles</option><option value="attention">Action required</option><option value="unchecked">Not checked</option><option value="missing-email">No email</option></select>
@@ -119,7 +127,7 @@
           <label class="field"><span>Registration <b>*</b></span><input name="registration" id="field-registration" required maxlength="12" placeholder="AB12 CDE" autocomplete="off"></label>
           <label class="field"><span>Recipient email</span><input name="email" id="field-email" type="email" placeholder="driver@example.co.uk"></label>
           <label class="field"><span>Owner / driver</span><input name="owner" id="field-owner" maxlength="140" placeholder="Driver's name"></label>
-          <label class="field"><span>Company</span><input name="company" id="field-company" maxlength="140" placeholder="Company or division"></label>
+          <label class="field"><span>Company</span><input name="company" id="field-company" list="company-suggestions" maxlength="140" placeholder="Company or division"><datalist id="company-suggestions"></datalist></label>
           <label class="field"><span>Make</span><input name="make" id="field-make" maxlength="140" placeholder="e.g. Ford"></label>
           <label class="field"><span>Model</span><input name="model" id="field-model" maxlength="140" placeholder="e.g. Focus"></label>
           <label class="field"><span>Colour</span><input name="colour" id="field-colour" maxlength="140" placeholder="e.g. Blue"></label>

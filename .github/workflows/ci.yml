@@ -21,6 +21,8 @@ jobs:
         run: python -m compileall -q autokeeper tests
       - name: Unit and API tests
         run: python -m pytest tests -q
+      - name: Check browser script syntax
+        run: node --check autokeeper/web/static/app.js
       - name: Check static assets
         run: |
           test -f autokeeper/web/index.html
