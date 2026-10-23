@@ -12,19 +12,29 @@ from fastapi import (
     APIRouter, Depends, FastAPI, File, Header, HTTPException, Request,
     UploadFile,
 )
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from . import core
+from . import core, ollama
 from .importer import MAX_IMPORT, import_vehicles, read_import
 
 HERE = Path(__file__).resolve().parent
 basic = HTTPBasic(auto_error=False)
 templates = Jinja2Templates(directory=str(HERE / "web"))
 logger = logging.getLogger(__name__)
+
+
+class OllamaMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=6000)
+
+
+class OllamaChatInput(BaseModel):
+    model: str = Field(min_length=1, max_length=160)
+    messages: list[OllamaMessage] = Field(min_length=1, max_length=20)
 
 
 class VehicleInput(BaseModel):
@@ -127,6 +137,38 @@ def create_app(db_path=None):
     @api.get("/dashboard")
     def dashboard(db=Depends(get_db)):
         return core.get_dashboard(db)
+
+    @api.get("/ollama/models")
+    def ollama_models():
+        try:
+            return {"models": ollama.list_models()}
+        except ollama.OllamaError as exc:
+            raise HTTPException(503, str(exc)) from exc
+
+    @api.post("/ollama/chat", dependencies=[Depends(require_write)])
+    def ollama_chat(body: OllamaChatInput):
+        # No vehicle data, tools, arbitrary network URLs or files are forwarded.
+        messages = [m.model_dump() for m in body.messages]
+        if messages[-1]["role"] != "user":
+            raise HTTPException(422, "The last chat message must come from the user.")
+        if sum(len(m["content"]) for m in messages) > 30_000:
+            raise HTTPException(422, "Conversation context is too long. Start a new chat.")
+        try:
+            upstream = ollama.open_chat(body.model, messages)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except ollama.OllamaError as exc:
+            raise HTTPException(503, str(exc)) from exc
+        return StreamingResponse(
+            ollama.stream_deltas(upstream),
+            media_type="application/x-ndjson",
+            headers={
+                "Cache-Control": "no-store",
+                "X-Content-Type-Options": "nosniff",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
 
     @api.get("/vehicles/{vehicle_id}/history")
     def history(vehicle_id: int, db=Depends(get_db)):
