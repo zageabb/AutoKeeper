@@ -44,6 +44,8 @@ def init_db(db):
           make TEXT NOT NULL DEFAULT '',
           model TEXT NOT NULL DEFAULT '',
           colour TEXT NOT NULL DEFAULT '',
+          acquisition_date TEXT,
+          disposal_date TEXT,
           fuel_type TEXT NOT NULL DEFAULT '',
           year_of_manufacture INTEGER,
           mot_status TEXT NOT NULL DEFAULT '',
@@ -75,6 +77,12 @@ def init_db(db):
           UNIQUE(vehicle_id, kind, due_date, stage, recipient)
         );
     """)
+    # Add nullable lifecycle fields to existing installations without replacing
+    # or deleting any vehicle records, notification history or DVLA checks.
+    existing_columns = {row["name"] for row in db.execute("PRAGMA table_info(vehicles)")}
+    for field in ("acquisition_date", "disposal_date"):
+        if field not in existing_columns:
+            db.execute(f"ALTER TABLE vehicles ADD COLUMN {field} TEXT")
     db.commit()
 
 
@@ -92,24 +100,60 @@ def email_address(value):
     return value
 
 
+def normalise_lifecycle_date(value):
+    """Optional ISO or UK-style date. Excel date/datetime cells are supported."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    raw = str(value).strip()
+    if not raw:
+        return None
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(raw, fmt).date().isoformat()
+        except ValueError:
+            continue
+    raise ValueError("Invalid lifecycle date. Use YYYY-MM-DD or DD/MM/YYYY.")
+
+
+def is_disposed(vehicle, today=None):
+    """A future disposal is scheduled, not yet complete."""
+    disposal = iso_date(vehicle.get("disposal_date"))
+    return bool(disposal and disposal <= (today or date.today()))
+
+
 def save_vehicle(db, body, vehicle_id=None):
+    current = get_vehicle(db, vehicle_id) if vehicle_id is not None else None
+    if vehicle_id is not None and current is None:
+        raise LookupError("Vehicle not found")
     values = {k: str(body.get(k) or "").strip()[:140] for k in VEHICLE_COLUMNS}
     values["registration"] = registration(values["registration"])
     values["email"] = email_address(values["email"])
+    # Older API clients omitting these new optional fields must preserve values.
+    for field in ("acquisition_date", "disposal_date"):
+        supplied = body[field] if field in body else (current.get(field) if current else None)
+        values[field] = normalise_lifecycle_date(supplied)
+    if (values["acquisition_date"] and values["disposal_date"]
+            and values["disposal_date"] < values["acquisition_date"]):
+        raise ValueError("Disposal date cannot be before acquisition date.")
     stamp = utcnow()
     if vehicle_id is None:
         cursor = db.execute("""
             INSERT INTO vehicles(registration, owner, company, email, make, model, colour,
-                                 created_at, updated_at)
-            VALUES(:registration, :owner, :company, :email, :make, :model, :colour, :created, :updated)
+                                 acquisition_date, disposal_date, created_at, updated_at)
+            VALUES(:registration, :owner, :company, :email, :make, :model, :colour,
+                   :acquisition_date, :disposal_date, :created, :updated)
         """, {**values, "created": stamp, "updated": stamp})
         vehicle_id = cursor.lastrowid
     else:
-        if not get_vehicle(db, vehicle_id):
-            raise LookupError("Vehicle not found")
         db.execute("""
             UPDATE vehicles SET registration=:registration, owner=:owner, company=:company,
-              email=:email, make=:make, model=:model, colour=:colour, updated_at=:updated
+              email=:email, make=:make, model=:model, colour=:colour,
+              acquisition_date=:acquisition_date, disposal_date=:disposal_date,
+              updated_at=:updated
             WHERE id=:id
         """, {**values, "updated": stamp, "id": vehicle_id})
     db.commit()
@@ -148,7 +192,13 @@ def view_vehicle(row, today=None):
     item["company_key"] = company_key(item.get("company"))
     item["mot"] = status(item["mot_expiry_date"], today)
     item["tax"] = status(item["tax_due_date"], today)
-    if is_sorn(item["tax_status"]):
+    item["lifecycle_state"] = ("disposed" if is_disposed(item, today) else
+                               "scheduled" if iso_date(item.get("disposal_date")) else "active")
+    if item["lifecycle_state"] == "disposed":
+        # Keep the underlying DVLA dates for historical reporting.
+        item["mot"] = {"state": "disposed", "days": None}
+        item["tax"] = {"state": "disposed", "days": None}
+    elif is_sorn(item["tax_status"]):
         # SORN does not extend or cancel the underlying MOT expiry date.
         # Pause the dashboard's due/overdue warning while kept off road,
         # then resume the ordinary MOT rule when DVLA no longer reports SORN.
@@ -164,14 +214,17 @@ def company_key(value):
 
 def fleet_stats(rows):
     """One source of truth for both fleet-wide and company KPIs."""
+    active_rows = [v for v in rows if v["lifecycle_state"] != "disposed"]
     return {
+        "active": len(active_rows),
+        "disposed": len(rows) - len(active_rows),
         "clear": sum(
             v["mot"]["state"] == "ok" and v["tax"]["state"] in ("ok", "sorn")
-            for v in rows
+            for v in active_rows
         ),
         "unknown": sum(
             v["mot"]["state"] == "unknown" or v["tax"]["state"] == "unknown"
-            for v in rows
+            for v in active_rows
         ),
         "total": len(rows),
         "mot_due": sum(v["mot"]["state"] == "due" for v in rows),
@@ -183,9 +236,9 @@ def fleet_stats(rows):
             or v["tax"]["state"] in ("due", "overdue")
             for v in rows
         ),
-        "unchecked": sum(not v["last_checked_at"] for v in rows),
-        "errors": sum(bool(v["last_error"]) for v in rows),
-        "missing_email": sum(not v["email"] for v in rows),
+        "unchecked": sum(not v["last_checked_at"] for v in active_rows),
+        "errors": sum(bool(v["last_error"]) for v in active_rows),
+        "missing_email": sum(not v["email"] for v in active_rows),
     }
 
 
@@ -289,8 +342,11 @@ def refresh_vehicle(db, vehicle_id, key=None, client=requests):
 
 
 def refresh_all(db, key=None, client=requests):
-    result = {"total": 0, "success": 0, "failed": 0}
-    for row in db.execute("SELECT id FROM vehicles ORDER BY registration").fetchall():
+    result = {"total": 0, "success": 0, "failed": 0, "skipped_disposed": 0}
+    for row in db.execute("SELECT * FROM vehicles ORDER BY registration").fetchall():
+        if is_disposed(dict(row)):
+            result["skipped_disposed"] += 1
+            continue
         result["total"] += 1
         checked = refresh_vehicle(db, row["id"], key=key, client=client)
         result["success" if checked["success"] else "failed"] += 1
@@ -342,7 +398,7 @@ def reminders(db, today=None, dry_run=False, send=smtp_send, env=None):
         v = dict(row)
         # Do not email about MOT or tax renewal while the vehicle is SORN.
         # Expiry dates remain stored, so reminders resume when it is taxed.
-        if is_sorn(v["tax_status"]):
+        if is_sorn(v["tax_status"]) or is_disposed(v, today):
             continue
         for kind, due in (("MOT", v["mot_expiry_date"]), ("Tax", v["tax_due_date"])):
             stage = reminder_stage(due, today)

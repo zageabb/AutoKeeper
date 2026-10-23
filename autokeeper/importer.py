@@ -3,7 +3,7 @@ import csv
 import io
 import sqlite3
 
-from .core import iso_date, registration, save_vehicle
+from .core import iso_date, normalise_lifecycle_date, registration, save_vehicle
 
 MAX_IMPORT = 6 * 1024 * 1024
 
@@ -61,6 +61,15 @@ def import_vehicles(db, rows):
                 "model": value(row, "Model", "dvla_Model"),
                 "colour": value(row, "Colour"),
             }
+            # Empty import cells should preserve existing dates. Nonempty
+            # spreadsheet date cells are normalised and validated before saving.
+            for field, headings in (
+                ("acquisition_date", ("Acquisition Date", "Acquired Date", "acquisition_date", "Date Acquired")),
+                ("disposal_date", ("Disposal Date", "Disposed Date", "disposal_date", "Date Disposed")),
+            ):
+                raw = value(row, *headings)
+                if raw:
+                    incoming[field] = normalise_lifecycle_date(raw)
             current = db.execute("SELECT * FROM vehicles WHERE registration=?",
                                  (vrm,)).fetchone()
             if current:

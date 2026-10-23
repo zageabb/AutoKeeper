@@ -34,6 +34,8 @@ class VehicleInput(BaseModel):
     make: str = ""
     model: str = ""
     colour: str = ""
+    acquisition_date: str | None = None
+    disposal_date: str | None = None
 
 
 def require_admin(
@@ -137,7 +139,7 @@ def create_app(db_path=None):
     @api.post("/vehicles", dependencies=[Depends(require_write)])
     def create_vehicle(body: VehicleInput, db=Depends(get_db)):
         try:
-            return core.view_vehicle(core.save_vehicle(db, body.model_dump()))
+            return core.view_vehicle(core.save_vehicle(db, body.model_dump(exclude_unset=True)))
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
         except sqlite3.IntegrityError as exc:
@@ -146,7 +148,7 @@ def create_app(db_path=None):
     @api.put("/vehicles/{vehicle_id}", dependencies=[Depends(require_write)])
     def update_vehicle(vehicle_id: int, body: VehicleInput, db=Depends(get_db)):
         try:
-            return core.view_vehicle(core.save_vehicle(db, body.model_dump(), vehicle_id))
+            return core.view_vehicle(core.save_vehicle(db, body.model_dump(exclude_unset=True), vehicle_id))
         except LookupError as exc:
             raise HTTPException(404, str(exc)) from exc
         except ValueError as exc:
