@@ -124,7 +124,8 @@ def create_app(db_path=None):
         try:
             core.init_db(db)
             record_ai.init_proposals(db)
-            knowledge.read_knowledge(kb_path)
+            # Knowledge is optional: a missing/unwritable file must not block
+            # the fleet dashboard or scheduled vehicle services.
         finally:
             db.close()
         yield
