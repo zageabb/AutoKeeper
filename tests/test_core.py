@@ -31,6 +31,13 @@ class AutoKeeperTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             core.registration("@!!")
 
+    def test_unknown_dates_not_counted_as_clear(self):
+        self.add()
+        metrics = core.get_dashboard(self.db)["stats"]
+        self.assertEqual(metrics["total"], 1)
+        self.assertEqual(metrics["unknown"], 1)
+        self.assertEqual(metrics["clear"], 0)
+
     def test_due_dates(self):
         today = date(2026, 10, 23)
         self.assertEqual(core.status("2026-11-02", today)["state"], "due")

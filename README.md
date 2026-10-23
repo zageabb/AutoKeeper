@@ -50,7 +50,7 @@ The second command can send actual emails, but only after SMTP is configured and
 
 See docs/UBUNTU_DEPLOYMENT.md for a loopback Uvicorn service, authenticated UDA/Caddy reverse proxy and weekly systemd timer (default Monday 08:00 Europe/London). A GitHub commit does not deploy the service, set up the DVLA key or authorise Gmail email delivery.
 
-Use APP_ADMIN_PASSWORD for app access; DVLA_API_KEY for VES; SMTP_APP_PASSWORD plus SMTP_USER and SMTP_FROM for email. A connected Gmail account in ChatGPT does not configure Ubuntu SMTP.
+Use APP_ADMIN_PASSWORD for app access; DVLA_API_KEY for VES; SMTP_APP_PASSWORD plus SMTP_USER and SMTP_FROM for the privately configured sender email. A connected Gmail account in ChatGPT does not configure Ubuntu SMTP.
 
 Tests: python -m compileall -q autokeeper tests && python -m pytest tests -q.
 

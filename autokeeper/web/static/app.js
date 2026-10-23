@@ -114,12 +114,12 @@
     byId("dvla-status").className = "status-chip " + (data.dvla_configured ? "active" : "pending");
     setText("smtp-status", data.smtp_configured ? "Configured" : "Needs credentials");
     byId("smtp-status").className = "status-chip " + (data.smtp_configured ? "active" : "pending");
-    const clear = stats.total - stats.attention;
+    const clear = stats.clear;
     const pct = stats.total ? Math.round(100 * clear / stats.total) : 0;
     byId("health-ring").style.setProperty("--progress", String(pct) + "%");
     setText("health-number", stats.total ? pct + "%" : "—");
     setText("health-message", stats.total ? clear + " of " + stats.total + " without imminent expiry" : "No vehicles yet");
-    setText("health-description", stats.total ? "Based on known MOT and tax expiry dates. Unknown data needs checking." : "Add a vehicle to see the health summary.");
+    setText("health-description", stats.total ? stats.unknown + " vehicles have missing expiry information; check DVLA before treating them as compliant." : "Add a vehicle to see the health summary.");
     showRows();
   }
   function openDialog(row) {

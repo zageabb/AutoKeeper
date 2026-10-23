@@ -147,10 +147,14 @@ def view_vehicle(row, today=None):
 def get_dashboard(db, today=None):
     rows = [view_vehicle(r, today) for r in db.execute(
         "SELECT * FROM vehicles ORDER BY registration").fetchall()]
+    clear = sum(v["mot"]["state"] == "ok" and v["tax"]["state"] in ("ok", "sorn") for v in rows)
+    unknown = sum(v["mot"]["state"] == "unknown" or v["tax"]["state"] == "unknown" for v in rows)
     return {
         "vehicles": rows,
         "as_of": (today or date.today()).isoformat(),
         "stats": {
+            "clear": clear,
+            "unknown": unknown,
             "total": len(rows),
             "mot_due": sum(v["mot"]["state"] == "due" for v in rows),
             "tax_due": sum(v["tax"]["state"] == "due" for v in rows),

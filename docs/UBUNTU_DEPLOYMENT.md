@@ -19,7 +19,7 @@ chmod 700 data
 
 Set a strong APP_ADMIN_PASSWORD, authorised DVLA_API_KEY and appropriate SMTP values in the private .env file.
 
-For your chosen sender, use SMTP_USER=uda.abbot@gmail.com and SMTP_FROM=uda.abbot@gmail.com. Obtain a valid sending credential for that account under Google's current account security policies. A ChatGPT Gmail connection does not grant SMTP credentials to your Ubuntu server. Keep SMTP_APP_PASSWORD blank until ready to test outbound email with the recipients' permission.
+For the authorised sender, privately populate SMTP_USER and SMTP_FROM with that Gmail address. Obtain a valid sending credential under Google's current account security policies. A ChatGPT Gmail connection does not grant SMTP credentials to your Ubuntu server. Keep SMTP_APP_PASSWORD blank until ready to test outbound email with the recipients' permission.
 
 Set AUTOKEEPER_DB_PATH=/opt/autokeeper/data/autokeeper.db and AUTOKEEPER_ROOT_PATH=/apps/autokeeper for the live UDA prefix.
 
