@@ -13,3 +13,5 @@ Derived from the private zageabb/Application-Standard baseline.
 9. Add tests and update DEVELOPMENT when modifying behaviour. Run syntax and tests and confirm GitHub CI before merging.
 10. Distinguish code committed, CI passed, Ubuntu deployed and first live email delivered. Never claim evidence not observed.
 11. The dashboard adapts the draft Taiju light design conventions and is not an approved corporate theme reproduction.
+
+13. New lifecycle fields are optional and migrated in place. Never remove disposed vehicle histories automatically; future disposal dates must not stop checks/reminders before that date. Test import re-runs and old API clients omitting new fields.
