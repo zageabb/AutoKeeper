@@ -11,7 +11,7 @@ A self-hosted UK vehicle register for Ubuntu/UDA. AutoKeeper stores cars, owners
 - Individual and fleet-wide DVLA Vehicle Enquiry Service checks; regular checks using systemd.
 - Dashboard counts for vehicles, MOT due, road tax due, overdue and missing emails.
 - SMTP reminders at 30, 14, 7 days and overdue; per-vehicle recipient, persistent deduplication log; SORN tax excluded.
-- HTTP Basic authentication, read/write API separation and unit/API tests.
+- HTTP Basic authentication for standalone installs, or UDA user and group authentication behind the authenticated reverse proxy; read/write API separation and unit/API tests.
 
 **Important:** The uploaded 45-vehicle list and DVLA notebook are not in Git. Keep the real workbook, recipient addresses, DVLA key and Gmail credentials off GitHub. This repository was public when the initial code was committed. Private visibility is recommended.
 
@@ -26,12 +26,12 @@ python3 -m venv .venv
 . .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
-# Privately edit .env with a strong APP_ADMIN_PASSWORD and other credentials
+# Keep AUTOKEEPER_AUTH_MODE=basic and set a strong APP_ADMIN_PASSWORD for standalone use
 set -a; . ./.env; set +a
 uvicorn autokeeper.server:app --host 127.0.0.1 --port 5064
 ~~~
 
-Open http://127.0.0.1:5064/ using the HTTP Basic username/password from the environment. For localhost use AUTOKEEPER_ROOT_PATH empty; for the UDA/Caddy prefix set AUTOKEEPER_ROOT_PATH=/apps/autokeeper and follow docs/UBUNTU_DEPLOYMENT.md.
+For standalone use, open http://127.0.0.1:5064/ with the HTTP Basic credentials from the environment. For UDA, set AUTOKEEPER_AUTH_MODE=uda and AUTOKEEPER_ROOT_PATH=/apps/autokeeper; Caddy supplies the authenticated X-UDA-User and X-UDA-Groups headers after checking the user's UDA access. The app accepts users in Personal and UDA admins. Keep Uvicorn bound to loopback and follow docs/UBUNTU_DEPLOYMENT.md.
 
 Upload Master Car List-ga.xlsx using **Import vehicles**. Existing VRMs are updated, not duplicated. Real employee details remain in the private SQLite store, not in version control. The app imports the master vehicle and recipient columns; it then retrieves authoritative statuses from DVLA if credentials are configured. The optional dvla check.xlsx Results sheet can also be imported to show historical MOT/tax dates as an unverified snapshot; a later live DVLA check supersedes it.
 
@@ -50,7 +50,7 @@ The second command can send actual emails, but only after SMTP is configured and
 
 See docs/UBUNTU_DEPLOYMENT.md for a loopback Uvicorn service, authenticated UDA/Caddy reverse proxy and weekly systemd timer (default Monday 08:00 Europe/London). A GitHub commit does not deploy the service, set up the DVLA key or authorise Gmail email delivery.
 
-Use APP_ADMIN_PASSWORD for app access; DVLA_API_KEY for VES; SMTP_APP_PASSWORD plus SMTP_USER and SMTP_FROM for the privately configured sender email. A connected Gmail account in ChatGPT does not configure Ubuntu SMTP.
+Use AUTOKEEPER_AUTH_MODE=uda behind UDA or AUTOKEEPER_AUTH_MODE=basic for standalone access. APP_ADMIN_PASSWORD is required in basic mode; DVLA_API_KEY is for VES; SMTP_APP_PASSWORD plus SMTP_USER and SMTP_FROM for the privately configured sender email. A connected Gmail account in ChatGPT does not configure Ubuntu SMTP.
 
 Tests: python -m compileall -q autokeeper tests && python -m pytest tests -q.
 

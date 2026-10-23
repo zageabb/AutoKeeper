@@ -33,7 +33,26 @@ class VehicleInput(BaseModel):
     colour: str = ""
 
 
-def require_admin(credentials: HTTPBasicCredentials | None = Depends(basic)):
+def require_admin(
+    request: Request,
+    credentials: HTTPBasicCredentials | None = Depends(basic),
+    x_uda_user: str | None = Header(default=None),
+    x_uda_groups: str | None = Header(default=None),
+):
+    auth_mode = os.getenv("AUTOKEEPER_AUTH_MODE", "basic").strip().casefold()
+    if auth_mode == "uda":
+        groups = {
+            group.strip().casefold()
+            for group in (x_uda_groups or "").split(",")
+            if group.strip()
+        }
+        if x_uda_user and ("personal" in groups or "*" in groups):
+            request.state.authenticated_user = x_uda_user
+            return
+        raise HTTPException(401, "UDA authentication required")
+    if auth_mode != "basic":
+        raise HTTPException(503, "AUTOKEEPER_AUTH_MODE must be 'basic' or 'uda'")
+
     password = os.getenv("APP_ADMIN_PASSWORD", "")
     if not password or password == "REPLACE_WITH_LONG_RANDOM_PASSWORD":
         if os.getenv("AUTOKEEPER_DEV_NO_AUTH") == "1":
@@ -49,7 +68,7 @@ def require_admin(credentials: HTTPBasicCredentials | None = Depends(basic)):
 
 def require_write(x_autokeeper_request: str | None = Header(default=None)):
     # A non-simple request header prevents cross-site HTML form CSRF against
-    # browser-cached Basic auth; do not enable permissive CORS for this service.
+    # browser-cached Basic auth or UDA session; do not enable permissive CORS.
     if x_autokeeper_request != "same-origin":
         raise HTTPException(403, "Missing same-origin write header")
 

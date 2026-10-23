@@ -17,7 +17,7 @@ mkdir -p data
 chmod 700 data
 ~~~
 
-Set a strong APP_ADMIN_PASSWORD, authorised DVLA_API_KEY and appropriate SMTP values in the private .env file.
+For direct standalone access, set a strong APP_ADMIN_PASSWORD and AUTOKEEPER_AUTH_MODE=basic. For UDA access, set AUTOKEEPER_AUTH_MODE=uda; the authenticated Caddy route passes X-UDA-User and X-UDA-Groups, and AutoKeeper allows the Personal group and UDA admins. Keep the .env file private. Set DVLA_API_KEY and SMTP values only when they are available.
 
 For the authorised sender, privately populate SMTP_USER and SMTP_FROM with that Gmail address. Obtain a valid sending credential under Google's current account security policies. A ChatGPT Gmail connection does not grant SMTP credentials to your Ubuntu server. Keep SMTP_APP_PASSWORD blank until ready to test outbound email with the recipients' permission.
 
@@ -57,7 +57,7 @@ sudo systemctl enable --now autokeeper.service
 curl -f http://127.0.0.1:5064/health
 ~~~
 
-Only /health is intentionally unauthenticated and it must not expose private vehicle information. All dashboard and API routes enforce application HTTP Basic credentials.
+Only /health is intentionally unauthenticated and it must not expose private vehicle information. Dashboard and API routes enforce the selected auth mode: HTTP Basic for standalone installs or UDA identity and group headers behind the authenticated proxy.
 
 ## 3. Publish through your existing authenticated UDA/Caddy route
 
@@ -65,11 +65,16 @@ LOCAL_UBUNTU_PROXY_COMPAT: this application runs behind a configurable path pref
 
 ~~~caddyfile
 handle_path /apps/autokeeper/* {
+    forward_auth 127.0.0.1:5048 {
+        uri /auth/check
+        header_up X-UDA-App autokeeper
+        copy_headers X-UDA-User X-UDA-Groups
+    }
     reverse_proxy 127.0.0.1:5064
 }
 ~~~
 
-The handle_path directive strips the public prefix. FastAPI receives an unprefixed route, while AUTOKEEPER_ROOT_PATH generates prefixed asset and API URLs. Configure Caddy inside the existing approved UDA ingress and authentication block. Do not expose port 5064 directly, create an unauthenticated alternative proxy route or trust arbitrary client-supplied forwarded prefix headers.
+The handle_path directive strips the public prefix. FastAPI receives an unprefixed route, while AUTOKEEPER_ROOT_PATH generates prefixed asset and API URLs. Configure Caddy inside the existing UDA ingress and authentication block. The app trusts UDA identity headers only when AUTOKEEPER_AUTH_MODE=uda and requires the Personal group or UDA admin membership. Do not expose the backend port directly or trust arbitrary client-supplied forwarded prefix headers.
 
 Verify login and anonymous denial, home page, CSS, JS, dashboard JSON, add/edit, Excel import and DVLA requests through the prefixed address. Test localhost root deployment separately with AUTOKEEPER_ROOT_PATH empty.
 

@@ -14,6 +14,7 @@ Reference: private zageabb/Application-Standard template. Implementation branch:
 | AUTO-008 | GitHub CI tests | Pending workflow result |
 | AUTO-009 | Security / visibility / real-data review | Pending |
 | AUTO-010 | Extended MOT history and mileage/insurance stats | Backlog |
+| AUTO-011 | UDA identity mode using trusted user and group headers; Basic remains the standalone default | Implemented in source; live UDA smoke check pending |
 
 The 45 rows in the source workbook are deliberately not committed. The original notebook may contain API key configuration, so it was not copied into Git. The remote DVLA key and authorised Gmail SMTP credentials must be deployed privately.
 
