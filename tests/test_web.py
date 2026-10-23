@@ -40,6 +40,21 @@ class WebTests(unittest.TestCase):
         self.assertEqual(dashboard["stats"]["total"], 1)
         self.assertEqual(dashboard["stats"]["unchecked"], 1)
 
+    def test_static_assets_and_prefix_links(self):
+        from unittest.mock import patch
+        with patch.dict(os.environ, {"AUTOKEEPER_ROOT_PATH": "/apps/autokeeper"}):
+            app = create_app(str(Path(self.temp.name) / "prefix.sqlite"))
+            with TestClient(app) as client:
+                home = client.get("/", auth=self.auth)
+                self.assertEqual(home.status_code, 200)
+                self.assertIn('href="./static/style.css"', home.text)
+                self.assertIn('src="./static/app.js"', home.text)
+                css = client.get("/static/style.css")
+                js = client.get("/static/app.js")
+                self.assertEqual(css.status_code, 200)
+                self.assertEqual(js.status_code, 200)
+                self.assertIn("text/css", css.headers.get("content-type", ""))
+                self.assertIn("javascript", js.headers.get("content-type", ""))
 
 if __name__ == "__main__":
     unittest.main()
