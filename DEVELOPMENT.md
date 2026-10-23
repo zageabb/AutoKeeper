@@ -25,3 +25,5 @@ Code committed != CI tested != Ubuntu deployed != DVLA check successful != email
 | AUTO-012 | Excel upload HTTP 500 investigation | Added synthetic 45-vehicle full .xlsx upload regression; reported missing openpyxl, storage errors and invalid ZIP as actionable HTTP responses. Live UDA server not inspected; verify after deployment. |
 
 | AUTO-013 | Group the dashboard and register by company | Source implementation: API company summaries, filter scoped dashboard KPIs, collapsible register headings, suggestions on vehicle form; CI and live Ubuntu validation to be recorded separately. |
+
+| AUTO-014 | Suppress MOT due/overdue warnings for SORN vehicles | Source change and regression tests for MOT/tax badges, fleet/company counts, notification suppression and restoration after SORN ends. CI and live Ubuntu check separate. |
