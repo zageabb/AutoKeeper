@@ -62,6 +62,26 @@ class WebTests(unittest.TestCase):
         self.assertEqual(data["companies"][-1]["name"], "Unassigned")
         self.assertEqual(sum(x["stats"]["unknown"] for x in data["companies"]), 4)
 
+    def test_sorn_mot_state_and_dashboard_counts(self):
+        from autokeeper import core
+        headers = {"X-AutoKeeper-Request": "same-origin"}
+        r = self.client.post("/api/vehicles", auth=self.auth, headers=headers,
+                             json={"registration": "AA00AAA", "company": "Demo",
+                                   "email": "example@example.org"})
+        self.assertEqual(r.status_code, 200)
+        with core.open_db(str(Path(self.temp.name) / "db.sqlite")) as db:
+            db.execute("""
+                UPDATE vehicles SET tax_status='SORN',
+                  mot_expiry_date='2026-01-01',
+                  tax_due_date='2026-01-01' WHERE registration='AA00AAA'
+            """)
+        data = self.client.get("/api/dashboard", auth=self.auth).json()
+        self.assertEqual(data["vehicles"][0]["mot"]["state"], "sorn")
+        self.assertEqual(data["vehicles"][0]["mot_expiry_date"], "2026-01-01")
+        self.assertEqual(data["stats"]["mot_overdue"], 0)
+        self.assertEqual(data["stats"]["attention"], 0)
+        self.assertEqual(data["companies"][0]["stats"]["mot_overdue"], 0)
+
     def test_static_assets_and_prefix_links(self):
         from unittest.mock import patch
         with patch.dict(os.environ, {"AUTOKEEPER_ROOT_PATH": "/apps/autokeeper"}):

@@ -138,12 +138,21 @@ def status(expiry, today=None):
             "days": days}
 
 
+def is_sorn(tax_status):
+    """Use DVLA's tax state to identify vehicles declared off the road."""
+    return str(tax_status or "").strip().casefold() == "sorn"
+
+
 def view_vehicle(row, today=None):
     item = dict(row)
     item["company_key"] = company_key(item.get("company"))
     item["mot"] = status(item["mot_expiry_date"], today)
     item["tax"] = status(item["tax_due_date"], today)
-    if item["tax_status"].upper() == "SORN":
+    if is_sorn(item["tax_status"]):
+        # SORN does not extend or cancel the underlying MOT expiry date.
+        # Pause the dashboard's due/overdue warning while kept off road,
+        # then resume the ordinary MOT rule when DVLA no longer reports SORN.
+        item["mot"] = {"state": "sorn", "days": None}
         item["tax"] = {"state": "sorn", "days": None}
     return item
 
@@ -331,9 +340,11 @@ def reminders(db, today=None, dry_run=False, send=smtp_send, env=None):
              "missing_email": 0, "not_configured": 0, "failed": 0}
     for row in db.execute("SELECT * FROM vehicles").fetchall():
         v = dict(row)
+        # Do not email about MOT or tax renewal while the vehicle is SORN.
+        # Expiry dates remain stored, so reminders resume when it is taxed.
+        if is_sorn(v["tax_status"]):
+            continue
         for kind, due in (("MOT", v["mot_expiry_date"]), ("Tax", v["tax_due_date"])):
-            if kind == "Tax" and v["tax_status"].upper() == "SORN":
-                continue
             stage = reminder_stage(due, today)
             if not stage:
                 continue

@@ -77,3 +77,16 @@ For an import error, update the server venv dependencies: `cd /opt/autokeeper &&
 ## Company grouping
 
 The dashboard starts on **All companies** and groups the vehicle table under collapsible Company headings, each with the number of vehicles, MOT and tax renewals due/overdue, and those needing attention. Select a company above the summary cards to view company-only dashboard statistics and vehicle records. The search and compliance filters continue working inside that company; return to All companies to see the full fleet. Company matching is case-insensitive and ignores leading/trailing spaces. Blank company values are shown under **Unassigned**, and the Add Vehicle dialog offers existing company names for consistency. DVLA refresh-all and the weekly reminder worker still act on every registered vehicle, regardless of the screen filter. This is grouping/filtering, **not company-based access control**.
+
+
+### SORN and MOT display
+
+When DVLA reports a vehicle as **SORN**, the dashboard and company register
+show **SORN** for both MOT and tax, rather than due or overdue warnings.
+The actual MOT expiry date and DVLA MOT status remain stored and visible as
+reference; SORN does **not** renew or validate an expired MOT. Such vehicles
+are not counted as road-ready in the fleet health percentage. The weekly
+reminder worker also suppresses MOT and tax expiry emails while SORN. As soon
+as a later DVLA check reports the vehicle is no longer SORN, MOT and tax
+expiry warnings and reminders follow their normal rules again. Check the
+vehicle has a valid MOT before returning it to road use.

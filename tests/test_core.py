@@ -95,6 +95,53 @@ class AutoKeeperTests(unittest.TestCase):
         self.assertEqual(core.get_vehicle(self.db, vehicle["id"])["mot_expiry_date"],
                          "2026-11-22")
 
+    def test_sorn_suppresses_mot_overdue_without_losing_expiry(self):
+        vehicle = self.add()
+        self.db.execute("""
+            UPDATE vehicles
+            SET company='Off Road', mot_status='Expired',
+                mot_expiry_date='2026-10-01', tax_status=' SORN ',
+                tax_due_date='2026-09-01'
+            WHERE id=?
+        """, (vehicle["id"],))
+        self.db.commit()
+        today = date(2026, 10, 23)
+        v = core.view_vehicle(core.get_vehicle(self.db, vehicle["id"]), today)
+        self.assertEqual(v["mot"]["state"], "sorn")
+        self.assertEqual(v["tax"]["state"], "sorn")
+        self.assertEqual(v["mot_expiry_date"], "2026-10-01")
+        self.assertEqual(v["tax_due_date"], "2026-09-01")
+        self.assertEqual(v["mot_status"], "Expired")
+        stats = core.fleet_stats([v])
+        self.assertEqual(stats["mot_overdue"], 0)
+        self.assertEqual(stats["mot_due"], 0)
+        self.assertEqual(stats["tax_overdue"], 0)
+        self.assertEqual(stats["attention"], 0)
+        self.assertEqual(stats["clear"], 0)  # SORN isn't road-ready.
+        companies = core.company_groups([v])
+        self.assertEqual(companies[0]["stats"]["attention"], 0)
+
+        # A live DVLA update to Taxed restores MOT and tax expiry warnings.
+        self.db.execute("UPDATE vehicles SET tax_status='Taxed' WHERE id=?",
+                        (vehicle["id"],))
+        self.db.commit()
+        road = core.view_vehicle(core.get_vehicle(self.db, vehicle["id"]), today)
+        self.assertEqual(road["mot"]["state"], "overdue")
+        self.assertEqual(road["tax"]["state"], "overdue")
+        self.assertEqual(core.fleet_stats([road])["attention"], 1)
+
+    def test_sorn_suppresses_upcoming_mot(self):
+        vehicle = self.add()
+        self.db.execute("""
+            UPDATE vehicles SET tax_status='SORN', mot_expiry_date='2026-11-02'
+            WHERE id=?
+        """, (vehicle["id"],))
+        self.db.commit()
+        v = core.view_vehicle(core.get_vehicle(self.db, vehicle["id"]),
+                              date(2026, 10, 23))
+        self.assertEqual(v["mot"]["state"], "sorn")
+        self.assertEqual(core.fleet_stats([v])["mot_due"], 0)
+
     def test_reminder_dedup_and_sorn(self):
         vehicle = self.add()
         self.db.execute("""
@@ -108,13 +155,26 @@ class AutoKeeperTests(unittest.TestCase):
             sent.append((to, subject, message))
         config = {"SMTP_HOST": "fake", "SMTP_USER": "fake",
                   "SMTP_APP_PASSWORD": "fake", "SMTP_FROM": "fake@example.org"}
+        # SORN suppresses both tax and MOT messages without recording sends.
         one = core.reminders(self.db, today=date(2026, 10, 23),
                              send=fake_send, env=config)
+        self.assertEqual(one["sent"], 0)
+        self.assertEqual(one["already_sent"], 0)
+        self.assertEqual(core.reminders(self.db, today=date(2026, 10, 23),
+                                         dry_run=True)["would_send"], 0)
+        self.assertEqual(len(sent), 0)
+
+        # On return to taxed status the underlying expiry dates still apply.
+        self.db.execute("UPDATE vehicles SET tax_status='Taxed' WHERE id=?",
+                        (vehicle["id"],))
+        self.db.commit()
         two = core.reminders(self.db, today=date(2026, 10, 23),
                              send=fake_send, env=config)
-        self.assertEqual(one["sent"], 1)
-        self.assertEqual(two["already_sent"], 1)
-        self.assertEqual(len(sent), 1)
+        three = core.reminders(self.db, today=date(2026, 10, 23),
+                               send=fake_send, env=config)
+        self.assertEqual(two["sent"], 2)
+        self.assertEqual(three["already_sent"], 2)
+        self.assertEqual(len(sent), 2)
 
     def test_import_dvla_snapshot_is_not_a_live_check(self):
         from autokeeper.importer import import_vehicles
