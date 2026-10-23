@@ -12,19 +12,46 @@ from fastapi import (
     APIRouter, Depends, FastAPI, File, Header, HTTPException, Request,
     UploadFile,
 )
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from . import core
+from . import core, knowledge, ollama, record_ai
 from .importer import MAX_IMPORT, import_vehicles, read_import
 
 HERE = Path(__file__).resolve().parent
 basic = HTTPBasic(auto_error=False)
 templates = Jinja2Templates(directory=str(HERE / "web"))
 logger = logging.getLogger(__name__)
+
+
+class MarkdownBody(BaseModel):
+    content: str = Field(max_length=knowledge.MAX_PREVIEW_CHARS)
+
+
+class KnowledgeSave(MarkdownBody):
+    revision: str = Field(min_length=64, max_length=64)
+
+
+class ProposedChangeRequest(BaseModel):
+    model: str = Field(min_length=1, max_length=160)
+    instruction: str = Field(min_length=1, max_length=6000)
+
+
+class ChangeApproval(BaseModel):
+    id: str = Field(min_length=16, max_length=100)
+
+
+class OllamaMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=6000)
+
+
+class OllamaChatInput(BaseModel):
+    model: str = Field(min_length=1, max_length=160)
+    messages: list[OllamaMessage] = Field(min_length=1, max_length=20)
 
 
 class VehicleInput(BaseModel):
@@ -70,6 +97,7 @@ def require_admin(
         or not hmac.compare_digest(credentials.password, password)):
         raise HTTPException(401, "Authentication required",
                             headers={"WWW-Authenticate": 'Basic realm="AutoKeeper"'})
+    request.state.authenticated_user = expected_user
 
 
 def require_write(x_autokeeper_request: str | None = Header(default=None)):
@@ -88,12 +116,16 @@ def create_app(db_path=None):
     # Do not pass root_path to FastAPI; recent Starlette versions then route
     # /static/* incorrectly when the request path is already stripped.
     root_path = os.getenv("AUTOKEEPER_ROOT_PATH", "").rstrip("/")
+    kb_path = knowledge.knowledge_path(db_path)
 
     @asynccontextmanager
     async def lifespan(app):
         db = core.open_db(db_path)
         try:
             core.init_db(db)
+            record_ai.init_proposals(db)
+            # Knowledge is optional: a missing/unwritable file must not block
+            # the fleet dashboard or scheduled vehicle services.
         finally:
             db.close()
         yield
@@ -107,6 +139,7 @@ def create_app(db_path=None):
         db = core.open_db(db_path)
         try:
             core.init_db(db)
+            record_ai.init_proposals(db)
             yield db
         finally:
             db.close()
@@ -127,6 +160,93 @@ def create_app(db_path=None):
     @api.get("/dashboard")
     def dashboard(db=Depends(get_db)):
         return core.get_dashboard(db)
+
+    @api.get("/ollama/models")
+    def ollama_models():
+        try:
+            return {"models": ollama.list_models()}
+        except ollama.OllamaError as exc:
+            raise HTTPException(503, str(exc)) from exc
+
+    @api.post("/ollama/chat", dependencies=[Depends(require_write)])
+    def ollama_chat(body: OllamaChatInput, db=Depends(get_db)):
+        # No vehicle data, tools, arbitrary network URLs or files are forwarded.
+        messages = [m.model_dump() for m in body.messages]
+        if messages[-1]["role"] != "user":
+            raise HTTPException(422, "The last chat message must come from the user.")
+        if sum(len(m["content"]) for m in messages) > 30_000:
+            raise HTTPException(422, "Conversation context is too long. Start a new chat.")
+        try:
+            context = record_ai.system_context(
+                db, knowledge.prompt_knowledge(kb_path), messages[-1]["content"]
+            )
+            upstream = ollama.open_chat(body.model, messages, system_context=context)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except ollama.OllamaError as exc:
+            raise HTTPException(503, str(exc)) from exc
+        return StreamingResponse(
+            ollama.stream_deltas(upstream),
+            media_type="application/x-ndjson",
+            headers={
+                "Cache-Control": "no-store",
+                "X-Content-Type-Options": "nosniff",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
+
+    @api.get("/knowledge")
+    def get_knowledge():
+        try:
+            return knowledge.read_knowledge(kb_path)
+        except (OSError, ValueError) as exc:
+            logger.warning("Knowledge read failed: %s", type(exc).__name__)
+            raise HTTPException(503, "Could not read the knowledge file.") from exc
+
+    @api.put("/knowledge", dependencies=[Depends(require_write)])
+    def put_knowledge(body: KnowledgeSave):
+        try:
+            return knowledge.save_knowledge(kb_path, body.content, body.revision)
+        except FileExistsError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except OSError as exc:
+            logger.exception("Cannot persist AutoKeeper knowledge document")
+            raise HTTPException(503, "Knowledge file could not be saved.") from exc
+
+    @api.post("/markdown/render", dependencies=[Depends(require_write)])
+    def markdown_preview(body: MarkdownBody):
+        try:
+            return {"html": knowledge.markdown_html(body.content)}
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    @api.post("/ollama/propose", dependencies=[Depends(require_write)])
+    def propose_vehicle_changes(body: ProposedChangeRequest, request: Request,
+                                db=Depends(get_db)):
+        try:
+            return record_ai.prepare_changes(
+                db, request.state.authenticated_user, body.model,
+                body.instruction, knowledge.prompt_knowledge(kb_path),
+            )
+        except (ValueError, LookupError) as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except ollama.OllamaError as exc:
+            raise HTTPException(503, str(exc)) from exc
+
+    @api.post("/ollama/apply", dependencies=[Depends(require_write)])
+    def apply_vehicle_changes(body: ChangeApproval, request: Request,
+                              db=Depends(get_db)):
+        try:
+            return record_ai.apply_change(
+                db, request.state.authenticated_user, body.id,
+            )
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
 
     @api.get("/vehicles/{vehicle_id}/history")
     def history(vehicle_id: int, db=Depends(get_db)):

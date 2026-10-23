@@ -31,3 +31,7 @@ Code committed != CI tested != Ubuntu deployed != DVLA check successful != email
 | AUTO-015 | Acquisition and disposal dates | Nullable SQLite lifecycle fields with idempotent schema migration; per-vehicle date inputs, grouped register columns, imports, disposed compliance/reminder handling and synthetic migration/API tests. Live Ubuntu rollout still requires deployment and smoke testing. |
 
 | AUTO-016 | Manual DVLA checks on disposed vehicles | API accepts disposed-only manual check; UI shows current MOT/tax for disposed vehicles, owned-fleet warnings exclude them, weekly worker/reminders remain active-only. Includes synthetic API/regression tests; live DVLA and Ubuntu rollout unverified. |
+
+| AUTO-017 | Hideable Ollama chat and installed model list | Feature code implemented: backend Ollama proxy, streaming replies, show/hide, model selection, stop and clear; live Ubuntu verification pending. |
+| AUTO-018 | Editable full Markdown knowledge | Persistent private .md source and safe Markdown preview, optimistic revision checks and model prompt context; live save to verify. |
+| AUTO-019 | AI vehicle queries and proposed updates | Read-only current record context; model-generated strict edit proposals, explicit authenticated approval and stale data/replay guards; verify with live model. |

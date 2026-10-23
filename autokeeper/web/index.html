@@ -140,7 +140,90 @@
       <div class="dialog-footer"><button type="button" class="btn btn-secondary" id="cancel-dialog">Cancel</button><button type="submit" class="btn btn-primary">Save vehicle</button></div>
     </form>
   </dialog>
+  <!-- On-page Ollama chat: state stays in this browser tab only. -->
+  <button type="button" id="ollama-toggle" class="ollama-launcher"
+          aria-controls="ollama-panel" aria-expanded="false">
+    <span aria-hidden="true">✦</span> AI Chat
+  </button>
+  <section id="ollama-panel" class="ollama-panel" role="dialog"
+           aria-label="AutoKeeper Ollama chat" aria-modal="false" hidden>
+    <header class="ollama-header">
+      <div>
+        <strong>Ollama chat</strong>
+        <small>Local AI · text only</small>
+      </div>
+      <div class="ollama-header-actions">
+        <button type="button" id="ollama-knowledge" title="View and edit application knowledge">Knowledge</button>
+        <button type="button" id="ollama-new" title="Clear chat history">New chat</button>
+        <button type="button" id="ollama-close" aria-label="Hide chat" title="Hide chat">×</button>
+      </div>
+    </header>
+    <div class="ollama-toolbar">
+      <label for="ollama-model">Model</label>
+      <select id="ollama-model" aria-label="Ollama installed models" disabled>
+        <option value="">Connect to Ollama…</option>
+      </select>
+      <button type="button" id="ollama-refresh-models" title="Refresh model list"
+              aria-label="Refresh installed models">↻</button>
+    </div>
+    <p id="ollama-status" class="ollama-status" role="status" aria-live="polite">
+      Open chat to connect to Ollama.
+    </p>
+    <div id="ollama-messages" class="ollama-messages" aria-label="Chat messages" aria-live="off">
+      <p class="ollama-placeholder">Select an installed Ollama model and start chatting. Your messages are not automatically linked to vehicle records.</p>
+    </div>
+    <form id="ollama-chat-form" class="ollama-compose">
+      <label class="ollama-sr-only" for="ollama-input">Message to Ollama</label>
+      <textarea id="ollama-input" rows="2" maxlength="6000"
+                placeholder="Ask your local model…" disabled></textarea>
+      <div class="ollama-compose-footer">
+        <small>Enter to send · Shift+Enter for a new line</small>
+        <div>
+          <button type="button" id="ollama-stop" hidden>Stop</button>
+          <button type="button" id="ollama-propose" disabled title="Prepare a proposed record update; confirmation required">Prepare change</button>
+          <button type="submit" id="ollama-send" disabled>Send</button>
+        </div>
+      </div>
+    </form>
+  </section>
+  <dialog id="knowledge-dialog" class="knowledge-dialog" aria-labelledby="knowledge-heading">
+    <header class="knowledge-heading">
+      <div><h2 id="knowledge-heading">Application knowledge</h2>
+        <p>Editable Markdown · included with each Ollama prompt · stored privately on Ubuntu</p></div>
+      <button type="button" id="knowledge-close" aria-label="Close knowledge editor">×</button>
+    </header>
+    <div class="knowledge-toolbar" role="toolbar" aria-label="Markdown formatting">
+      <button type="button" data-md="heading" title="Heading">H</button>
+      <button type="button" data-md="bold" title="Bold"><b>B</b></button>
+      <button type="button" data-md="italic" title="Italic"><i>I</i></button>
+      <button type="button" data-md="link" title="Link">Link</button>
+      <button type="button" data-md="image" title="Image">Image</button>
+      <button type="button" data-md="code" title="Code block">Code</button>
+      <button type="button" data-md="table" title="Table">Table</button>
+      <button type="button" data-md="task" title="Task list">Task</button>
+      <button type="button" data-md="quote" title="Blockquote">Quote</button>
+      <button type="button" data-md="rule" title="Horizontal rule">Rule</button>
+      <button type="button" id="knowledge-download" title="Download Markdown file">Download .md</button>
+    </div>
+    <div class="knowledge-editor-grid">
+      <div class="knowledge-pane">
+        <label for="knowledge-source">Markdown source</label>
+        <textarea id="knowledge-source" spellcheck="false" aria-label="Markdown knowledge source"></textarea>
+      </div>
+      <div class="knowledge-pane">
+        <label>Live formatted preview</label>
+        <div id="knowledge-preview" class="markdown-body knowledge-preview"></div>
+      </div>
+    </div>
+    <footer class="knowledge-footer">
+      <span id="knowledge-status" role="status" aria-live="polite">Not loaded</span>
+      <span id="knowledge-count">0 characters</span>
+      <button type="button" id="knowledge-reload">Reload</button>
+      <button type="button" id="knowledge-save" class="btn btn-primary">Save knowledge</button>
+    </footer>
+  </dialog>
   <script>window.AUTO_BASE = window.location.pathname.replace(/\/$/, "");</script>
   <script src="./static/app.js" defer></script>
+  <script src="./static/ollama-chat.js" defer></script>
 </body>
 </html>

@@ -325,5 +325,6 @@
   });
   byId("search").addEventListener("input", showRows);
   byId("filter").addEventListener("change", showRows);
+  window.addEventListener("autokeeper-records-changed", function () { guarded(load); });
   guarded(load);
 }());

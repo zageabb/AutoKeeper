@@ -109,3 +109,70 @@ This records ownership history only. It does not change DVLA keeper data or subm
 ## DVLA checks after vehicle disposal
 
 Disposed vehicles can still be checked against the DVLA Vehicle Enquiry Service. Use the circular refresh icon beside one disposed registration or click **Check disposed** to look up all disposed registrations. **Check active** continues to check active vehicles only, and the weekly systemd worker remains active-only. The register displays the latest MOT expiry/status and tax due/status for disposed registrations, with the raw DVLA status beneath each date. Ownership/disposal dates are never modified by a DVLA lookup. The vehicle stays marked Disposed and is excluded from MOT/tax compliance alert totals, automatic weekly checks and emailed reminders. Failed lookups retain previous results and show a check error. A record of a taxed vehicle or valid MOT is not evidence that it was physically on the road; it only reports DVLA status as of the lookup. Use the Disposed vehicles filter to review them.
+
+
+## Local Ollama AI Chat
+
+Open or hide the floating **AI Chat** panel. The model dropdown fetches the
+currently installed models using Ollama GET /api/tags. Send a prompt to stream
+a response using POST /api/chat; Stop and New chat controls are provided.
+Chat history stays in the open browser tab, not in the AutoKeeper database.
+
+AutoKeeper contacts Ollama from the backend; the browser never connects to
+the Ollama service. Set OLLAMA_BASE_URL in the server's private environment
+(default http://127.0.0.1:11434 for same-host Ollama). If Ollama is on a
+different private Ubuntu host, set its LAN URL and restrict port 11434 to
+the AutoKeeper server. Never expose the Ollama API publicly.
+OLLAMA_READ_TIMEOUT defaults to 300 seconds, adjustable from 30 to 900.
+
+### Vehicle record access and AI changes
+
+The chat receives a read-only snapshot of current AutoKeeper records with each
+query (including registration, owner, company, email, acquisition/disposal,
+MOT and tax fields). When over 100 vehicles exist, the context is limited
+to the most relevant 100 and indicates that limitation.
+
+To change a record, type an instruction such as "Set AB12CDE company to
+Example Ltd" then click **Prepare change**. The model returns a structured
+proposal. AutoKeeper validates the registration and editable fields, and
+displays their actual before/after values for review. Nothing is written
+until you click **Apply these changes** and confirm again. Proposals are
+specific to the authenticated user, expire after 15 minutes, can only be
+applied once, and are invalidated if the record changes in the meantime.
+
+Allowed fields: owner, company, email, make, model, colour, acquisition date,
+disposal date. The AI cannot change DVLA-managed MOT or tax information,
+delete records or initiate external actions. Some Ollama models cannot
+produce reliable JSON-schema output; use another installed model if needed.
+
+### Full Markdown knowledge document
+
+Click **Knowledge** in the chat header to edit the application's knowledge
+document. The editor has a Markdown source pane, formatting toolbar, and
+live rendered preview. It supports CommonMark/GitHub-style headings, tables,
+task lists, strikethrough, code fences, blockquotes, links, images, footnotes
+and lists. Raw HTML/scripts are not executed; the preview is sanitised.
+Remote image URLs in Markdown can still make an HTTP request from the viewer.
+
+The editable file defaults to data/knowledge.md alongside the SQLite DB,
+and can be moved using AUTOKEEPER_KNOWLEDGE_PATH. The first file is seeded
+from autokeeper/default_knowledge.md. Subsequent source updates never
+replace the user's saved document. They are not committed to GitHub.
+Changes take effect in future Ollama prompts. The save operation detects
+revision conflicts. You can download the Markdown source.
+
+The editor allows up to 128 KiB, while only the first 16,000 characters
+are added to a model prompt to bound context. Never place keys or passwords
+in this document because prompt context is sent to the configured Ollama.
+
+### Ubuntu update
+
+~~~bash
+cd /opt/autokeeper
+.venv/bin/python -m pip install -r requirements.txt
+sudo systemctl restart autokeeper.service
+~~~
+
+Code delivery and GitHub CI do not prove the Ollama API is reachable on the
+live Ubuntu host. Verify model discovery, reply streaming, Markdown preview,
+record lookup, proposed change, confirmation and UDA access controls there.
