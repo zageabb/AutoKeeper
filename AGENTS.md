@@ -15,3 +15,7 @@ Derived from the private zageabb/Application-Standard baseline.
 11. The dashboard adapts the draft Taiju light design conventions and is not an approved corporate theme reproduction.
 
 13. New lifecycle fields are optional and migrated in place. Never remove disposed vehicle histories automatically; future disposal dates must not stop checks/reminders before that date. Test import re-runs and old API clients omitting new fields.
+
+14. Ollama is server-to-server only: no public port 11434 or browser-supplied target URL. Never leak hidden model thinking tokens.
+15. Ollama receives private vehicle records as untrusted data. The model cannot perform writes directly. Changes require short-lived user-specific proposals, exact before/after review, and human confirmation; no DVLA-managed field edits.
+16. Markdown rendering uses server-side safe CommonMark/GFM and sanitisation. The editable knowledge document is outside Git, atomically saved, with revision conflict detection.

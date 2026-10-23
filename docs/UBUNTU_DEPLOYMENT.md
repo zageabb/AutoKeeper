@@ -162,3 +162,42 @@ curl -i http://127.0.0.1:5092/static/app.js
 ~~~
 
 Through the UDA site, verify /apps/autokeeper/static/style.css returns 200 text/css; /apps/autokeeper/static/app.js returns JavaScript; and /apps/autokeeper/api/dashboard returns authenticated JSON. Browser-relative asset links avoid reliance on mismatched AUTOKEEPER_ROOT_PATH values for HTML styling. Restart the running service after deploying code changes; a GitHub merge does not restart Ubuntu.
+
+
+## 6. Ollama chat and editable knowledge
+
+AutoKeeper uses an authenticated backend proxy to the private Ollama API.
+Do not publish port 11434 through Caddy or accept browser-supplied URLs.
+
+For Ollama installed on the same Ubuntu host, update the private .env:
+
+~~~dotenv
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_READ_TIMEOUT=300
+AUTOKEEPER_KNOWLEDGE_PATH=/opt/autokeeper/data/knowledge.md
+~~~
+
+If Ollama runs on another private host, substitute that host's LAN address
+and allow access only from the AutoKeeper server. Confirm reachability from
+the server before deploying:
+
+~~~bash
+curl --fail --silent http://127.0.0.1:11434/api/tags
+cd /opt/autokeeper
+.venv/bin/python -m pip install -r requirements.txt
+sudo systemctl restart autokeeper.service
+~~~
+
+Through the authenticated UDA site, verify that:
+1. The chat window opens, hides, and reopens.
+2. The installed models list matches Ollama; sending a prompt streams a reply.
+3. The Knowledge editor previews Markdown tables, links and code, saves and reloads.
+4. The AI answers a factual question about a test vehicle record.
+5. Prepare change shows a before/after diff with no database mutation.
+6. Apply requires confirmation and updates only the approved fields.
+7. Stale proposals and unauthenticated requests are rejected.
+
+Knowledge lives outside Git as a private Markdown file. Back it up along
+with SQLite and ensure the AutoKeeper Unix account owns the data directory.
+Model prompts contain current vehicle records and knowledge, so secure the
+Ollama host and never insert credentials into the knowledge file.
