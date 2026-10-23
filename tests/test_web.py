@@ -82,6 +82,38 @@ class WebTests(unittest.TestCase):
         self.assertEqual(data["stats"]["attention"], 0)
         self.assertEqual(data["companies"][0]["stats"]["mot_overdue"], 0)
 
+
+    def test_lifecycle_fields_roundtrip_and_validation(self):
+        headers = {"X-AutoKeeper-Request": "same-origin"}
+        created = self.client.post("/api/vehicles", auth=self.auth, headers=headers,
+                                   json={"registration": "XY55XYZ",
+                                         "acquisition_date": "2022-05-09",
+                                         "disposal_date": "2026-09-14"})
+        self.assertEqual(created.status_code, 200, created.text)
+        v = created.json()
+        self.assertEqual(v["lifecycle_state"], "disposed")
+        self.assertEqual(v["acquisition_date"], "2022-05-09")
+        dashboard = self.client.get("/api/dashboard", auth=self.auth).json()
+        self.assertEqual(dashboard["stats"]["active"], 0)
+        self.assertEqual(dashboard["stats"]["disposed"], 1)
+        updated = self.client.put("/api/vehicles/" + str(v["id"]),
+                                  auth=self.auth, headers=headers,
+                                  json={"registration": "XY55XYZ", "company": "History"})
+        self.assertEqual(updated.status_code, 200, updated.text)
+        self.assertEqual(updated.json()["disposal_date"], "2026-09-14")
+        bad = self.client.put("/api/vehicles/" + str(v["id"]),
+                              auth=self.auth, headers=headers,
+                              json={"registration": "XY55XYZ",
+                                    "acquisition_date": "2026-11-03",
+                                    "disposal_date": "2026-01-01"})
+        self.assertEqual(bad.status_code, 422)
+        clear = self.client.put("/api/vehicles/" + str(v["id"]),
+                                auth=self.auth, headers=headers,
+                                json={"registration": "XY55XYZ", "disposal_date": ""})
+        self.assertEqual(clear.status_code, 200, clear.text)
+        self.assertIsNone(clear.json()["disposal_date"])
+        self.assertEqual(clear.json()["acquisition_date"], "2022-05-09")
+
     def test_static_assets_and_prefix_links(self):
         from unittest.mock import patch
         with patch.dict(os.environ, {"AUTOKEEPER_ROOT_PATH": "/apps/autokeeper"}):
@@ -99,6 +131,10 @@ class WebTests(unittest.TestCase):
                 self.assertIn("javascript", js.headers.get("content-type", ""))
                 self.assertIn('id="company-select"', home.text)
                 self.assertIn("data-company-key", js.text)
+                self.assertIn('id="field-acquisition_date"', home.text)
+                self.assertIn('id="field-disposal_date"', home.text)
+                self.assertIn('value="disposed"', home.text)
+                self.assertIn("acquisition_date", js.text)
 
 
     def test_import_generated_workbook_layout(self):

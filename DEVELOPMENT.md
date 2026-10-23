@@ -27,3 +27,5 @@ Code committed != CI tested != Ubuntu deployed != DVLA check successful != email
 | AUTO-013 | Group the dashboard and register by company | Source implementation: API company summaries, filter scoped dashboard KPIs, collapsible register headings, suggestions on vehicle form; CI and live Ubuntu validation to be recorded separately. |
 
 | AUTO-014 | Suppress MOT due/overdue warnings for SORN vehicles | Source change and regression tests for MOT/tax badges, fleet/company counts, notification suppression and restoration after SORN ends. CI and live Ubuntu check separate. |
+
+| AUTO-015 | Acquisition and disposal dates | Nullable SQLite lifecycle fields with idempotent schema migration; per-vehicle date inputs, grouped register columns, imports, disposed compliance/reminder handling and synthetic migration/API tests. Live Ubuntu rollout still requires deployment and smoke testing. |

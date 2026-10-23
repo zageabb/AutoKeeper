@@ -56,7 +56,7 @@
         <section class="metrics" aria-label="Fleet statistics">
           <article class="metric">
             <div class="metric-heading">Registered vehicles <span class="metric-icon blue">▤</span></div>
-            <strong id="stat-total">—</strong><span class="metric-meta">Vehicles tracked</span>
+            <strong id="stat-total">—</strong><span class="metric-meta" id="stat-vehicle-meta">Vehicles tracked</span>
           </article>
           <article class="metric">
             <div class="metric-heading">MOT due in 30 days <span class="metric-icon amber">◷</span></div>
@@ -92,16 +92,16 @@
 
         <section class="panel table-panel" id="vehicles">
           <div class="table-top">
-            <div><h2>Vehicle register</h2><p>Grouped by company · expand or collapse each group to review vehicles and renewal dates</p></div>
+            <div><h2>Vehicle register</h2><p>Grouped by company · includes acquisition and disposal history</p></div>
             <div class="table-controls">
               <label class="search-wrap"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Search reg, driver, company…" aria-label="Search vehicles"></label>
-              <select id="filter" aria-label="Filter vehicles"><option value="all">All vehicles</option><option value="attention">Action required</option><option value="unchecked">Not checked</option><option value="missing-email">No email</option></select>
+              <select id="filter" aria-label="Filter vehicles"><option value="all">All vehicles</option><option value="active">Active vehicles</option><option value="disposed">Disposed vehicles</option><option value="attention">Action required</option><option value="unchecked">Not checked</option><option value="missing-email">No email</option></select>
             </div>
           </div>
           <div class="table-scroll">
             <table>
-              <thead><tr><th>Vehicle</th><th>Owner / company</th><th>MOT</th><th>Road tax</th><th>Reminder email</th><th>Last checked</th><th class="actions-heading">Actions</th></tr></thead>
-              <tbody id="vehicle-rows"><tr><td colspan="7" class="empty">Loading vehicles…</td></tr></tbody>
+              <thead><tr><th>Vehicle</th><th>Owner / company</th><th>Acquired</th><th>Disposed</th><th>MOT</th><th>Road tax</th><th>Reminder email</th><th>Last checked</th><th class="actions-heading">Actions</th></tr></thead>
+              <tbody id="vehicle-rows"><tr><td colspan="9" class="empty">Loading vehicles…</td></tr></tbody>
             </table>
           </div>
           <div class="table-footer"><span id="record-count">0 vehicles</span><span>Dates and statuses supplied by DVLA when available</span></div>
@@ -131,8 +131,10 @@
           <label class="field"><span>Make</span><input name="make" id="field-make" maxlength="140" placeholder="e.g. Ford"></label>
           <label class="field"><span>Model</span><input name="model" id="field-model" maxlength="140" placeholder="e.g. Focus"></label>
           <label class="field"><span>Colour</span><input name="colour" id="field-colour" maxlength="140" placeholder="e.g. Blue"></label>
+          <label class="field"><span>Acquisition date</span><input name="acquisition_date" id="field-acquisition_date" type="date"></label>
+          <label class="field"><span>Disposal date</span><input name="disposal_date" id="field-disposal_date" type="date"></label>
         </div>
-        <div class="form-note">MOT and road tax information will be populated by the DVLA check. Model and recipient details can be maintained here.</div>
+        <div class="form-note">Acquisition and disposal dates are optional. A disposal date in the past marks the vehicle as disposed and stops automatic MOT/tax checks and reminders; the vehicle remains in the register. Clear the disposal date to reactivate it. DVLA status dates remain available for reference.</div>
       </div>
       <div class="dialog-footer"><button type="button" class="btn btn-secondary" id="cancel-dialog">Cancel</button><button type="submit" class="btn btn-primary">Save vehicle</button></div>
     </form>

@@ -187,3 +187,7 @@ tr.company-group-row:hover > td { background: #e9f1f8; }
   .company-group-metrics { width: 100%; padding-left: 26px; }
   .company-toggle { gap: 8px; }
 }
+
+/* Vehicle lifecycle history */
+.pill-disposed { display: inline-block; margin-top: 6px; background: #edf0f4; color: #5b6777; }
+.date-text { white-space: nowrap; }

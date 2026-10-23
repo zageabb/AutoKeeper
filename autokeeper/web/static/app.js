@@ -53,13 +53,14 @@
   function statusText(data) {
     if (!data || data.state === "unknown") return "No data";
     if (data.state === "sorn") return "SORN";
+    if (data.state === "disposed") return "Disposed";
     if (data.state === "overdue") return "Overdue";
     if (data.state === "due") return data.days === 0 ? "Due today" : "Due soon";
     return "Up to date";
   }
   function dueCell(data, dateText) {
     const value = data || {state:"unknown"};
-    const state = ["ok","due","overdue","sorn"].includes(value.state) ? value.state : "unknown";
+    const state = ["ok","due","overdue","sorn","disposed"].includes(value.state) ? value.state : "unknown";
     return '<span class="date-cell"><span class="pill pill-' + state + '">' +
       escapeHTML(statusText(value)) + '</span><span class="date-text">' +
       escapeHTML(formatDate(dateText)) + '</span></span>';
@@ -96,9 +97,10 @@
     const stats = chosen ? chosen.stats : fleetStats;
     if (!stats) return;
     const scope = chosen ? chosen.name : "All companies";
-    setText("company-scope", scope + " · " + stats.total + " vehicles" +
+    setText("company-scope", scope + " · " + stats.active + " active / " + stats.disposed + " disposed" +
       (!chosen ? " across " + companies.length + " company groups" : ""));
     setText("stat-total", stats.total);
+    setText("stat-vehicle-meta", stats.active + " active · " + stats.disposed + " disposed");
     setText("stat-mot", stats.mot_due);
     setText("stat-tax", stats.tax_due);
     setText("stat-attention", stats.attention);
@@ -107,14 +109,14 @@
     setText("unchecked-count", stats.unchecked);
     setText("email-count", stats.missing_email);
     const clear = stats.clear;
-    const pct = stats.total ? Math.round(100 * clear / stats.total) : 0;
+    const pct = stats.active ? Math.round(100 * clear / stats.active) : 0;
     byId("health-ring").style.setProperty("--progress", String(pct) + "%");
-    setText("health-number", stats.total ? pct + "%" : "—");
-    setText("health-message", stats.total ?
-      clear + " of " + stats.total + " without imminent expiry" : "No vehicles yet");
-    setText("health-description", stats.total ?
-      stats.unknown + " vehicles have missing expiry information; check DVLA before treating them as compliant." :
-      "Add a vehicle to see the health summary.");
+    setText("health-number", stats.active ? pct + "%" : "—");
+    setText("health-message", stats.active ?
+      clear + " of " + stats.active + " active vehicles without imminent expiry" : "No active vehicles");
+    setText("health-description", stats.active ?
+      stats.unknown + " active vehicles have missing expiry information; check DVLA before treating them as compliant." :
+      "Disposed vehicles remain in the register for historical reference.");
   }
   function isDue(state) {
     return state === "due" || state === "overdue";
@@ -127,6 +129,10 @@
       '</span><div class="vehicle-caption">' + car + '</div></div></td>' +
       '<td><div class="primary-cell">' + driver + '</div><div class="secondary-cell">' +
         escapeHTML(v.company || "—") + '</div></td>' +
+      '<td><span class="date-text">' + escapeHTML(formatDate(v.acquisition_date)) + '</span></td>' +
+      '<td><span class="date-text">' + escapeHTML(formatDate(v.disposal_date)) + '</span>' +
+        (v.lifecycle_state === "disposed" ? '<span class="pill pill-disposed">Disposed</span>' :
+         v.lifecycle_state === "scheduled" ? '<span class="pill pill-due">Scheduled</span>' : '') + '</td>' +
       '<td>' + dueCell(v.mot, v.mot_expiry_date) + '</td>' +
       '<td>' + dueCell(v.tax, v.tax_due_date) + '</td>' +
       '<td><span class="email-cell">' + escapeHTML(v.email || "Not set") + '</span></td>' +
@@ -147,13 +153,14 @@
     const attention = entries.filter(function (v) {
       return isDue(v.mot.state) || isDue(v.tax.state);
     }).length;
-    return '<tr class="company-group-row"><td colspan="7">' +
+    const disposed = entries.filter(function (v) { return v.lifecycle_state === "disposed"; }).length;
+    return '<tr class="company-group-row"><td colspan="9">' +
       '<button class="company-toggle" type="button" data-company-key="' +
       escapeHTML(group.key) + '" aria-expanded="' + (!collapsed) + '">' +
       '<span class="company-group-title"><span class="company-chevron" aria-hidden="true">' +
       (collapsed ? "▸" : "▾") + '</span><span>' + escapeHTML(group.name) + '</span></span>' +
       '<span class="company-group-metrics"><span>' + entries.length + ' vehicle' +
-      (entries.length === 1 ? '' : 's') + '</span><span>MOT due / overdue: ' +
+      (entries.length === 1 ? '' : 's') + '</span><span>Disposed: ' + disposed + '</span><span>MOT due / overdue: ' +
       dueMOT + '</span><span>Tax due / overdue: ' + dueTax +
       '</span><span class="company-attention">Attention: ' + attention +
       '</span></span></button></td></tr>';
@@ -165,13 +172,15 @@
     const filtered = scoped.filter(function (v) {
       if (q && ![v.registration,v.owner,v.company,v.make,v.model,v.email]
         .some(function (s) { return String(s || "").toLowerCase().includes(q); })) return false;
+      if (filter === "active" && v.lifecycle_state === "disposed") return false;
+      if (filter === "disposed" && v.lifecycle_state !== "disposed") return false;
       if (filter === "attention" && !isDue(v.mot.state) && !isDue(v.tax.state)) return false;
       if (filter === "unchecked" && v.last_checked_at) return false;
       if (filter === "missing-email" && v.email) return false;
       return true;
     });
     if (!filtered.length) {
-      rowsElement.innerHTML = '<tr><td colspan="7" class="empty">No matching vehicles. Try another company or filter.</td></tr>';
+      rowsElement.innerHTML = '<tr><td colspan="9" class="empty">No matching vehicles. Try another company or filter.</td></tr>';
     } else {
       const buckets = new Map();
       for (const v of filtered) {
@@ -205,7 +214,7 @@
     editing = row ? row.id : null;
     setText("dialog-title", row ? "Edit vehicle" : "Add a vehicle");
     form.reset();
-    ["registration","owner","company","email","make","model","colour"].forEach(function (name) {
+    ["registration","owner","company","email","make","model","colour","acquisition_date","disposal_date"].forEach(function (name) {
       const selected = selectedCompanyRecord();
       byId("field-" + name).value = row ? row[name] || "" :
         (name === "company" && selected && selected.key !== "" ? selected.name : "");
@@ -269,8 +278,9 @@
       message("Running DVLA checks. This can take a while for larger fleets.");
       try {
         const result = await api("/api/refresh-all", {method:"POST"});
-        message("DVLA checked " + result.total + " vehicles: " + result.success +
-          " successful, " + result.failed + " failed.", result.failed > 0);
+        message("DVLA checked " + result.total + " active vehicles: " + result.success +
+          " successful, " + result.failed + " failed; " +
+          (result.skipped_disposed || 0) + " disposed vehicles skipped.", result.failed > 0);
         await load();
       } finally { button.disabled = false; }
     });

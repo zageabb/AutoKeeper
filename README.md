@@ -90,3 +90,17 @@ reminder worker also suppresses MOT and tax expiry emails while SORN. As soon
 as a later DVLA check reports the vehicle is no longer SORN, MOT and tax
 expiry warnings and reminders follow their normal rules again. Check the
 vehicle has a valid MOT before returning it to road use.
+
+
+## Acquisition and disposal dates
+
+Every vehicle now has optional Acquisition Date and Disposal Date fields (stored in ISO YYYY-MM-DD format; the browser uses native date pickers). The vehicle register shows both dates and a Disposed badge for vehicles already disposed of; the filters include Active vehicles and Disposed vehicles. A future disposal date appears as Scheduled and has no effect until that date.
+
+- A disposed vehicle remains in its company group for history; it is not deleted.
+- Fleet and company summaries show active and disposed counts; MOT/tax warnings and missing-recipient alerts cover only active vehicles.
+- The weekly DVLA sweep and reminder worker skip disposed vehicles; individual historical DVLA data is retained. Manual DVLA refresh remains possible.
+- Reopen a vehicle by clearing its disposal date in Edit.
+- CSV/Excel import recognises Acquisition Date, Acquired Date, Date Acquired, Disposal Date, Disposed Date and Date Disposed, including ISO and UK date formats. Blank cells do not erase existing dates, and disposal before acquisition is rejected.
+- Existing SQLite files are migrated automatically: two nullable date columns are added on startup without replacing rows. Back up the database before upgrading.
+
+This records ownership history only. It does not change DVLA keeper data or submit disposal paperwork to DVLA.
