@@ -39,7 +39,7 @@ User=autokeeper
 Group=autokeeper
 WorkingDirectory=/opt/autokeeper
 EnvironmentFile=/opt/autokeeper/.env
-ExecStart=/opt/autokeeper/.venv/bin/uvicorn autokeeper.server:app --host 127.0.0.1 --port 5064
+ExecStart=/opt/autokeeper/.venv/bin/uvicorn autokeeper.server:app --host 127.0.0.1 --port 5092
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
@@ -54,7 +54,7 @@ Ensure that the User, Group, directory ownership and private environment file pe
 ~~~bash
 sudo systemctl daemon-reload
 sudo systemctl enable --now autokeeper.service
-curl -f http://127.0.0.1:5064/health
+curl -f http://127.0.0.1:5092/health
 ~~~
 
 Only /health is intentionally unauthenticated and it must not expose private vehicle information. Dashboard and API routes enforce the selected auth mode: HTTP Basic for standalone installs or UDA identity and group headers behind the authenticated proxy.
@@ -70,7 +70,7 @@ handle_path /apps/autokeeper/* {
         header_up X-UDA-App autokeeper
         copy_headers X-UDA-User X-UDA-Groups
     }
-    reverse_proxy 127.0.0.1:5064
+    reverse_proxy 127.0.0.1:5092
 }
 ~~~
 
@@ -144,3 +144,21 @@ This worker may return an error status if any DVLA query fails or if due reminde
 For disaster recovery, keep the previous known-good release and copy of the private DB. Log mail summary counts, not credentials or unnecessary person-level personal data. Define a retention policy for checks and notification logs prior to wider use.
 
 **Important:** These instructions have not been executed on your Ubuntu server. Existing reverse-proxy authentication and Caddy syntax need reviewing within your actual site configuration.
+
+
+## Port 5092, UDA assets and LAN access
+
+The UDA deployment binds to 127.0.0.1:5092 on the Ubuntu host. The inability to browse to http://192.168.1.249:5092/ is expected for loopback-only listeners. Keep this protection: AUTOKEEPER_AUTH_MODE=uda trusts X-UDA-User/X-UDA-Groups from the authenticated reverse proxy and must not be exposed directly to LAN clients.
+
+Use https://tanyaanne.ddns.net/apps/autokeeper/ from LAN devices. To support a separate LAN-facing URL, route through a properly authenticated reverse proxy, not a public 0.0.0.0 Uvicorn listener.
+
+Check on Ubuntu:
+
+~~~bash
+sudo systemctl cat autokeeper.service
+sudo ss -ltnp | grep ':5092'
+curl -i http://127.0.0.1:5092/static/style.css
+curl -i http://127.0.0.1:5092/static/app.js
+~~~
+
+Through the UDA site, verify /apps/autokeeper/static/style.css returns 200 text/css; /apps/autokeeper/static/app.js returns JavaScript; and /apps/autokeeper/api/dashboard returns authenticated JSON. Browser-relative asset links avoid reliance on mismatched AUTOKEEPER_ROOT_PATH values for HTML styling. Restart the running service after deploying code changes; a GitHub merge does not restart Ubuntu.
