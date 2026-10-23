@@ -273,6 +273,37 @@ class WebChatTests(unittest.TestCase):
             headers=self.write,json={"model":"m","messages":[{
                 "role":"user","content":"x"}]*21}).status_code,422)
 
+    def test_two_consecutive_chat_turns(self):
+        """Follow-up messages preserve context and allow another Ollama call."""
+        started = []
+        def start(model, messages, system_context):
+            started.append((model, messages, system_context))
+            return Mock()
+        with patch("autokeeper.server.ollama.open_chat", side_effect=start), patch(
+            "autokeeper.server.ollama.stream_deltas",
+            side_effect=[
+                iter(['{"delta":"First answer"}\n', '{"done":true}\n']),
+                iter(['{"delta":"Second answer"}\n', '{"done":true}\n']),
+            ],
+        ):
+            one = self.client.post("/api/ollama/chat", auth=self.auth,
+                headers=self.write, json={"model":"local:test", "messages":[
+                    {"role":"user","content":"Question one"}
+                ]})
+            self.assertEqual(one.status_code, 200, one.text)
+            self.assertIn("First answer", one.text)
+            two = self.client.post("/api/ollama/chat", auth=self.auth,
+                headers=self.write, json={"model":"local:test", "messages":[
+                    {"role":"user","content":"Question one"},
+                    {"role":"assistant","content":"First answer"},
+                    {"role":"user","content":"Follow-up question"},
+                ]})
+            self.assertEqual(two.status_code, 200, two.text)
+            self.assertIn("Second answer", two.text)
+        self.assertEqual(len(started), 2)
+        self.assertEqual(started[1][1][-1]["content"], "Follow-up question")
+        self.assertEqual(started[1][1][-2]["content"], "First answer")
+
     def test_change_proposal_approval_endpoints(self):
         created = self.client.post("/api/vehicles",auth=self.auth,
             headers=self.write,json={"registration":"AA00AAA","company":"Old"})
