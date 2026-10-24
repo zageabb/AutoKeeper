@@ -320,10 +320,14 @@
         }
         if (!window.confirm(details)) return;
         const sent = await api("/api/reminders/send", {method:"POST"});
+        const diagnostics = (sent.failures || []).map(function (item) {
+          return item.registration + " (" + item.kind + "): " + item.reason;
+        });
         message("Manual email run: " + sent.sent + " sent, " + sent.already_sent +
           " previously sent, " + sent.failed + " failed, " +
           sent.not_configured + " not configured, " +
-          sent.missing_email + " missing email address(es).",
+          sent.missing_email + " missing email address(es)." +
+          (diagnostics.length ? " Delivery errors: " + diagnostics.join(" | ") : ""),
           sent.failed > 0 || sent.not_configured > 0);
       } finally {
         button.disabled = false;
