@@ -319,3 +319,13 @@ tr.company-group-row:hover > td { background: #e9f1f8; }
   .knowledge-pane:first-child { border-right: 0; border-bottom: 1px solid #dce4eb; }
   .knowledge-footer { flex-wrap: wrap; }
 }
+
+/* Prominent reminder controls: replaces old low-contrast footer links. */
+.page-footer { align-items: center; padding-top: 12px; border-top: 1px solid #e4eaf0; }
+.footer-caption { color: #75869a; }
+.reminder-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.reminder-actions .btn { font-size: 12px; font-weight: 720; box-shadow: 0 1px 2px rgba(26,43,59,.06); }
+.reminder-actions .btn-primary { background: #bd3833; color: #fff; }
+.reminder-actions .btn-secondary { color: #263f56; background: #fff; border-color: #aebdca; }
+.reminder-actions .btn:focus-visible { outline: 3px solid #7a9acb; outline-offset: 3px; }
+@media(max-width: 700px) { .reminder-actions { width: 100%; } .reminder-actions .btn { flex: 1 1 auto; } }
