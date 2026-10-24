@@ -2,6 +2,7 @@
 
 Secrets are environment variables; no live vehicle data belongs in Git.
 """
+import logging
 import os
 import re
 import sqlite3
@@ -11,6 +12,8 @@ from email.message import EmailMessage
 from pathlib import Path
 
 import requests
+
+logger = logging.getLogger(__name__)
 
 DVLA_URL = "https://driver-vehicle-licensing.api.gov.uk/vehicle-enquiry/v1/vehicles"
 VEHICLE_COLUMNS = ("registration", "owner", "company", "email", "make", "model", "colour")
@@ -402,11 +405,37 @@ def smtp_send(recipient, subject, body, env=None):
             smtp.send_message(msg)
 
 
+def smtp_failure_reason(exc):
+    """Safe operator-facing SMTP diagnostics; never expose raw server replies.
+
+    SMTP exception text may contain recipient addresses, usernames,
+    hostnames or echoed secrets, so report only a controlled category.
+    """
+    if isinstance(exc, smtplib.SMTPAuthenticationError):
+        return "SMTP authentication rejected. Check SMTP username, app password and account access."
+    if isinstance(exc, smtplib.SMTPRecipientsRefused):
+        return "Recipient rejected by SMTP server. Check recipient address and sender permissions."
+    if isinstance(exc, smtplib.SMTPSenderRefused):
+        return "Sender rejected by SMTP server. Check SMTP_FROM and authorised sender."
+    if isinstance(exc, (smtplib.SMTPConnectError, ConnectionRefusedError)):
+        return "Could not connect to SMTP server. Check host, port and firewall."
+    if isinstance(exc, (TimeoutError, smtplib.SMTPServerDisconnected)):
+        return "SMTP connection timed out or was closed. Check server reachability and TLS configuration."
+    if isinstance(exc, smtplib.SMTPNotSupportedError):
+        return "SMTP server does not support the requested authentication or TLS method."
+    if isinstance(exc, smtplib.SMTPResponseException):
+        return "SMTP server rejected the message (code " + str(exc.smtp_code) + "). Check mail-server policy."
+    if isinstance(exc, (OSError, ValueError)):
+        return "SMTP connection or configuration failed. Check host, port and TLS settings."
+    return "Unexpected email delivery error. Check SMTP configuration and service health."
+
+
 def reminders(db, today=None, dry_run=False, send=smtp_send, env=None):
     today = today or date.today()
     env = os.environ if env is None else env
     stats = {"sent": 0, "would_send": 0, "already_sent": 0,
-             "missing_email": 0, "not_configured": 0, "failed": 0}
+             "missing_email": 0, "not_configured": 0, "failed": 0,
+             "failures": []}
     for row in db.execute("SELECT * FROM vehicles").fetchall():
         v = dict(row)
         # Do not email about MOT or tax renewal while the vehicle is SORN.
@@ -445,8 +474,18 @@ def reminders(db, today=None, dry_run=False, send=smtp_send, env=None):
             )
             try:
                 send(v["email"], subject, body, env=env)
-            except Exception:
+            except Exception as exc:
                 stats["failed"] += 1
+                reason = smtp_failure_reason(exc)
+                # Only identifiers and pre-defined diagnosis categories are
+                # reported; never expose raw exceptions, credentials or bodies.
+                if len(stats["failures"]) < 20:
+                    stats["failures"].append({
+                        "registration": v["registration"], "kind": kind,
+                        "reason": reason,
+                    })
+                logger.warning("AutoKeeper reminder delivery failed: category=%s kind=%s registration=%s",
+                               type(exc).__name__, kind, v["registration"])
                 continue
             db.execute("""
                 INSERT INTO notifications(vehicle_id,kind,due_date,stage,recipient,sent_at)
