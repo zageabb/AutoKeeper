@@ -25,6 +25,16 @@ class WebTests(unittest.TestCase):
         self.env.stop()
         self.temp.cleanup()
 
+    def test_reminder_actions_have_visible_button_styles(self):
+        response = self.client.get("/", auth=self.auth)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('class="reminder-actions"', response.text)
+        self.assertIn('class="btn btn-secondary" id="preview-reminders"', response.text)
+        self.assertIn('class="btn btn-primary" id="send-reminders"', response.text)
+        stylesheet = self.client.get("/static/style.css")
+        self.assertEqual(stylesheet.status_code, 200)
+        self.assertIn(".reminder-actions .btn-primary", stylesheet.text)
+
     def test_read_requires_auth(self):
         self.assertEqual(self.client.get("/api/dashboard").status_code, 401)
         self.assertEqual(self.client.get("/api/dashboard", auth=self.auth).status_code, 200)
