@@ -303,6 +303,33 @@
         r.already_sent + " already sent; " + r.missing_email + " missing email addresses.");
     });
   });
+  byId("send-reminders").addEventListener("click", function () {
+    const button = this;
+    guarded(async function () {
+      button.disabled = true;
+      try {
+        const preview = await api("/api/reminders/preview", {method:"POST"});
+        const details = preview.would_send + " reminder(s) eligible to send.\n" +
+          preview.already_sent + " already sent (no duplicate).\n" +
+          preview.missing_email + " missing email address(es).\n\n" +
+          "SORN and disposed vehicles are excluded. Send eligible emails now?";
+        if (!preview.would_send) {
+          message("No new reminders to send. " + preview.already_sent +
+            " already sent; " + preview.missing_email + " missing email address(es).");
+          return;
+        }
+        if (!window.confirm(details)) return;
+        const sent = await api("/api/reminders/send", {method:"POST"});
+        message("Manual email run: " + sent.sent + " sent, " + sent.already_sent +
+          " previously sent, " + sent.failed + " failed, " +
+          sent.not_configured + " not configured, " +
+          sent.missing_email + " missing email address(es).",
+          sent.failed > 0 || sent.not_configured > 0);
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
   byId("import-form").addEventListener("submit", function (event) {
     event.preventDefault();
     const selected = byId("import-file").files[0];
