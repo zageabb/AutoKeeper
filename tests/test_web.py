@@ -188,6 +188,46 @@ class WebTests(unittest.TestCase):
                 self.assertIn("dvla-raw-status", js.text)
 
 
+    def test_manual_send_reminders_requires_auth_and_uses_dedup(self):
+        from autokeeper import core
+        from unittest.mock import patch
+        headers = {"X-AutoKeeper-Request": "same-origin"}
+        created = self.client.post("/api/vehicles", auth=self.auth,
+                                   headers=headers, json={
+                                       "registration":"AA11AAA",
+                                       "email":"synthetic@example.org",
+                                   })
+        self.assertEqual(created.status_code, 200, created.text)
+        with core.open_db(str(Path(self.temp.name) / "db.sqlite")) as db:
+            db.execute("UPDATE vehicles SET mot_expiry_date=? WHERE registration=?",
+                       ("2026-10-30", "AA11AAA"))
+            db.commit()
+        self.assertEqual(self.client.post("/api/reminders/send",
+                                           headers=headers).status_code, 401)
+        self.assertEqual(self.client.post("/api/reminders/send",
+                                           auth=self.auth).status_code, 403)
+        with patch("autokeeper.server.core.smtp_ready", return_value=False):
+            unavailable = self.client.post("/api/reminders/send",
+                                           auth=self.auth, headers=headers)
+            self.assertEqual(unavailable.status_code, 503)
+        with patch("autokeeper.server.core.smtp_ready", return_value=True), patch(
+             "autokeeper.server.core.reminders", side_effect=[
+                 {"sent":1,"would_send":0,"already_sent":0,
+                  "missing_email":0,"not_configured":0,"failed":0},
+                 {"sent":0,"would_send":0,"already_sent":1,
+                  "missing_email":0,"not_configured":0,"failed":0},
+             ]) as sender:
+            first = self.client.post("/api/reminders/send",
+                                     auth=self.auth, headers=headers)
+            self.assertEqual(first.status_code, 200, first.text)
+            self.assertEqual(first.json()["sent"], 1)
+            again = self.client.post("/api/reminders/send",
+                                     auth=self.auth, headers=headers)
+            self.assertEqual(again.status_code, 200, again.text)
+            self.assertEqual(again.json()["already_sent"], 1)
+            self.assertEqual(sender.call_count, 2)
+            self.assertFalse(sender.call_args.kwargs["dry_run"])
+
     def test_import_generated_workbook_layout(self):
         """Exercise actual multipart Excel parsing + SQLite with synthetic 45 rows."""
         from io import BytesIO
