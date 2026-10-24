@@ -176,3 +176,8 @@ sudo systemctl restart autokeeper.service
 Code delivery and GitHub CI do not prove the Ollama API is reachable on the
 live Ubuntu host. Verify model discovery, reply streaming, Markdown preview,
 record lookup, proposed change, confirmation and UDA access controls there.
+
+
+### Manual email trigger
+
+Use **Preview reminders** to see the number of due/overdue MOT and tax reminders. Click **Send reminders now** to preview again and confirm the recipient count before triggering SMTP delivery. The manual action shares the same per-recipient/due-date/stage deduplication and suppression rules as the scheduled worker: no SORN or disposed vehicles, no duplicate reminders, and no email if recipient is missing. Requires a configured SMTP service; the UI reports sent, already sent, missing recipient, configuration problems and failures. This does not send a blanket email to every vehicle; only currently eligible reminders.

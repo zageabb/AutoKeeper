@@ -302,6 +302,14 @@ def create_app(db_path=None):
     def preview_reminders(db=Depends(get_db)):
         return core.reminders(db, dry_run=True)
 
+    @api.post("/reminders/send", dependencies=[Depends(require_write)])
+    def send_reminders(db=Depends(get_db)):
+        if not core.smtp_ready():
+            raise HTTPException(503, "SMTP is not configured. Configure SMTP credentials before sending reminders.")
+        # Same send/dedup logic as the scheduled worker. SORN and disposed
+        # vehicles are excluded; only reminders that are due are sent.
+        return core.reminders(db, dry_run=False)
+
     @api.post("/import", dependencies=[Depends(require_write)])
     async def import_file(file: UploadFile = File(...), db=Depends(get_db)):
         try:
