@@ -336,6 +336,54 @@ class AutoKeeperTests(unittest.TestCase):
         self.assertEqual(v["mot"]["state"], "sorn")
         self.assertEqual(core.fleet_stats([v])["mot_due"], 0)
 
+    def test_smtp_diagnostics_are_safe_and_reminders_retry(self):
+        import smtplib
+        from unittest.mock import Mock
+        v = self.add()
+        self.db.execute("UPDATE vehicles SET mot_expiry_date='2026-10-30' WHERE id=?",
+                        (v["id"],))
+        self.db.commit()
+        env = {
+            "SMTP_HOST": "smtp.test", "SMTP_USER": "user",
+            "SMTP_APP_PASSWORD": "secret-DO-NOT-DISPLAY",
+            "SMTP_FROM": "sender@example.org",
+        }
+        def refused(*args, **kwargs):
+            raise smtplib.SMTPAuthenticationError(
+                535, b"sender@example.org secret-DO-NOT-DISPLAY"
+            )
+        result = core.reminders(self.db, today=date(2026, 10, 24),
+                                send=refused, env=env)
+        self.assertEqual(result["failed"], 1)
+        self.assertEqual(result["sent"], 0)
+        reason = result["failures"][0]["reason"]
+        self.assertIn("authentication", reason.lower())
+        self.assertNotIn("secret-DO-NOT-DISPLAY", str(result))
+        self.assertNotIn("sender@example.org", str(result))
+        sent = Mock()
+        good = core.reminders(self.db, today=date(2026, 10, 24),
+                              send=sent, env=env)
+        self.assertEqual(good["sent"], 1)
+        self.assertEqual(good["failures"], [])
+        self.assertEqual(core.reminders(self.db, today=date(2026, 10, 24),
+                                         send=sent, env=env)["already_sent"], 1)
+
+    def test_smtp_reason_categories_do_not_include_raw_exception(self):
+        import smtplib
+        cases = [
+            (smtplib.SMTPRecipientsRefused({"test@example.org": (550, "secret")}),
+             "Recipient rejected"),
+            (smtplib.SMTPSenderRefused(553, "secret", "sender@example.org"),
+             "Sender rejected"),
+            (TimeoutError("secret"), "timed out"),
+            (smtplib.SMTPResponseException(554, b"secret"), "554"),
+        ]
+        for error, expected in cases:
+            reason = core.smtp_failure_reason(error)
+            self.assertIn(expected, reason)
+            self.assertNotIn("secret", reason)
+            self.assertNotIn("example.org", reason)
+
     def test_reminder_dedup_and_sorn(self):
         vehicle = self.add()
         self.db.execute("""
