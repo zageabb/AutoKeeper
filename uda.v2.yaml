@@ -1,0 +1,42 @@
+# V2 review candidate; no activation authority
+schema_version: 2
+application:
+  name: autokeeper
+  kind: web
+  display_name: "AutoKeeper"
+  group: "Personal"
+source:
+  branch: main
+  repository: "zageabb/AutoKeeper"
+builds:
+  - name: build
+    toolchain: python
+    working_dir: "."
+    commands:
+      - ["python","-m","pip","install","-r","requirements.txt"]
+services:
+  - name: web
+    role: web
+    runtime: python
+    runtime_version: "3.10.12"
+    working_dir: "."
+    entrypoint: ["uvicorn","autokeeper.server:app","--host","127.0.0.1","--port","5092"]
+    port: 5092
+    health:
+      type: http
+      path: "/health"
+    restart: on-failure
+    required_builds: [build]
+proxy:
+  enabled: true
+  upstream: web
+  canonical_path: /apps/autokeeper/
+  authentication: uda
+environment:
+  required: ["APP_ADMIN_PASSWORD","APP_ADMIN_USERNAME","AUTOKEEPER_AUTH_MODE","AUTOKEEPER_DB_PATH","AUTOKEEPER_DEV_NO_AUTH","AUTOKEEPER_ROOT_PATH","DVLA_API_KEY","SMTP_APP_PASSWORD","SMTP_FROM","SMTP_HOST","SMTP_PORT","SMTP_USER"]
+deployment:
+  strategy: systemd
+  approval: explicit
+  auto_update: false
+  rollback: true
+  github_reporting: false
